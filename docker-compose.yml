@@ -1,0 +1,24 @@
+services:
+  api:
+    build:
+      context: .
+      target: api
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      CHROMA_PATH: /data/chroma
+    ports:
+      - "${API_PORT:-8000}:8000"  # porta do host configurável (API_PORT)
+    volumes:
+      - chroma_data:/data/chroma
+
+  # docker compose --profile test run --rm tests
+  tests:
+    build:
+      context: .
+      target: test
+    profiles: ["test"]
+
+volumes:
+  chroma_data:

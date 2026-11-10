@@ -1,0 +1,45 @@
+{
+  "cliente1988": {
+    "name": "Loja Demo 1988 (sintético)",
+    "receivables": [
+      {"id": "R-1988-001", "sale_offset_days": -1, "amount": "1250.00", "currency": "BRL", "settlement_offset_days": 1, "status": "previsto"},
+      {"id": "R-1988-002", "sale_offset_days": -1, "amount": "480.50", "currency": "BRL", "settlement_offset_days": 30, "status": "previsto"},
+      {"id": "R-1988-003", "sale_offset_days": -5, "amount": "99.90", "currency": "BRL", "settlement_offset_days": 1, "status": "pago"}
+    ],
+    "terminals": [
+      {
+        "id": "T-1988-01",
+        "model": "Get Clássica",
+        "connection_state": "offline",
+        "last_error_code": "ADQ 1-19",
+        "observed_minutes_ago": 45,
+        "last_transaction": {"status": "declined", "decline_code": "51", "amount": "89.90", "currency": "BRL", "minutes_ago": 190}
+      }
+    ]
+  },
+  "cliente2000": {
+    "name": "Loja Demo 2000 (sintético)",
+    "receivables": [
+      {"id": "R-2000-001", "sale_offset_days": -1, "amount": "3200.00", "currency": "BRL", "settlement_offset_days": 30, "status": "previsto"},
+      {"id": "R-2000-002", "sale_offset_days": -1, "amount": "150.00", "currency": "BRL", "settlement_offset_days": 2, "status": "bloqueado"}
+    ],
+    "terminals": [
+      {
+        "id": "T-2000-01",
+        "model": "Get Smart",
+        "connection_state": "online",
+        "last_error_code": null,
+        "observed_minutes_ago": 5,
+        "last_transaction": {"status": "approved", "decline_code": null, "amount": "210.00", "currency": "BRL", "minutes_ago": 20}
+      },
+      {
+        "id": "T-2000-02",
+        "model": "Get Clássica",
+        "connection_state": "online",
+        "last_error_code": null,
+        "observed_minutes_ago": 8,
+        "last_transaction": null
+      }
+    ]
+  }
+}

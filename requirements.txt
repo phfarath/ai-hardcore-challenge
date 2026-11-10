@@ -1,0 +1,9 @@
+fastapi==0.162.2
+uvicorn==0.54.0
+pydantic==2.14.3
+pydantic-settings==2.16.2
+openai==3.46.0
+chromadb==1.5.9
+httpx==0.28.1
+trafilatura==2.3.1
+tzdata==2026.6

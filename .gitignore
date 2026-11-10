@@ -1,0 +1,11 @@
+.env
+.venv/
+chroma_data/
+__pycache__/
+*.pyc
+.fastembed_cache/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.superpowers/
+.strata/
