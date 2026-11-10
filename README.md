@@ -10,6 +10,11 @@ Serviço HTTP em que **três agentes cooperam** para responder mensagens de clie
 
 Ideia central: **o LLM interpreta e escolhe ferramentas; o código controla identidade, sequência de execução, evidências e limites.** Cada resposta carrega as fontes que a sustentam, e os valores financeiros vêm da ferramenta, não da geração.
 
+**Link da demo:** https://youtu.be/ro0qdh9WJQE
+- 182 testes passando;
+- 14 de 15 casos de avaliação passando;
+- o único caso que falha está documentado como limitação conhecida.
+
 > A especificação de comportamento (critérios de aceite, contratos, falhas) está em [`spec.md`](spec.md); o plano de implementação em `docs/superpowers/plans/`.
 
 ## Estado da verificação
