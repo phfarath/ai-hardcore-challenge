@@ -23,10 +23,19 @@ Critério de sucesso do avaliador: clonar, configurar `.env`, rodar três comand
 - Falhas tratadas com status de domínio explícitos.
 - Logs estruturados e conjunto de avaliação (`evals/cases.json`).
 
+**Objetivos da revisão v2** (resposta à avaliação; entram por PRs separados)
+- Avaliador sem falsos positivos e regressões dos achados registradas antes das correções (T01).
+- Fatos financeiros renderizados só pelo servidor; diagnóstico guiado pela intenção (T03).
+- Identidade autenticada (token) e autorização por recurso antes de qualquer chamada ao LLM (T02).
+- Conversa e execução persistidas (SQLite), esclarecimento em dois turnos, idempotência (T04).
+- Caso interno de atendimento humano com fila, decisão de operador e retomada (T05).
+- Verificação de suporte e cobertura da pergunta antes de `answered` (T06); replanejamento limitado (T07).
+
 **Não-objetivos** (ficam fora do núcleo)
-- Quarto agente, guardrails amplos de conteúdo, handoff real (integração com Teams/humano).
-- Memória de conversa entre requisições.
-- Autenticação real, API real de clientes Getnet, dashboards/alertas implementados (só descritos no README).
+- Quarto agente conversacional, guardrails amplos de conteúdo.
+- Integração com plataforma externa de atendimento (o caso humano é interno à aplicação).
+- Banco servidor (Postgres), outbox e workers distribuídos: uma instância com SQLite basta ao escopo.
+- API real de clientes Getnet, dashboards/alertas implementados (só descritos no README).
 - Execução paralela dos especialistas (sequencial no MVP).
 
 **Anti-objetivos** (falha mesmo que "funcione")
@@ -157,7 +166,8 @@ Payload inválido → 422 sem chamar o modelo. Indisponibilidade total do proved
 
 - **Integração (pytest)**: API até a resposta, com LLM programado e Tavily/embeddings falsos; relógio congelado. Cobre: RAG, web, recebíveis, diagnóstico, fluxo composto, isolamento entre clientes, cliente desconhecido, tentativa de trocar usuário, recuperação vazia, timeout/falha de ramo.
 - **Verificação real separada**: ingestão, embeddings, uma recuperação, uma busca Tavily e execução via Docker.
-- **Avaliação de IA**: `evals/cases.json` com as 10 perguntas + casos de ambiguidade, composição e ausência de evidência; por caso: rota, ferramenta, evidência, condições a preservar, afirmações proibidas. Métricas: acerto de rota, de ferramenta, recuperação do documento esperado, fidelidade aos dados. Revisão manual primeiro; LLM-as-judge descrito como evolução.
+- **Avaliação de IA**: `evals/cases.json` com as 10 perguntas + casos de ambiguidade, composição e ausência de evidência. Por caso: rota; ferramentas obrigatórias, permitidas (qualquer outra reprova) e ordem quando material; fontes aceitáveis; status; termos a preservar; valores ligados ao seu status na mesma linha (`must_preserve_records`); valores monetários permitidos (`allowed_amounts`, qualquer outro "R$ x" reprova); âncoras semânticas (`must_mention_any`); afirmações proibidas (palavra inteira). Listas vazias = não aplicável, fora do denominador; falha de requisição conta como falha em todas as verificações aplicáveis. Cada execução grava um relatório JSON por caso com o commit em `evals/reports/`. O próprio avaliador é testado com respostas erradas (`tests/test_eval_cases.py`). Revisão manual primeiro; LLM-as-judge descrito como evolução.
+- **Regressões dos achados** (`tests/test_regressions.py`): prosa financeira contraditória, recusa com contexto de conectividade (e08) e evidência genérica tratada como suficiente (x13); marcadas `xfail(strict=True)` até T03/T06.
 
 ## 11. Observabilidade
 

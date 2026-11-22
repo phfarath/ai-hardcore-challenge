@@ -183,7 +183,7 @@ Para ampliar a integração: gravar/reproduzir respostas reais do provedor (VCR)
 
 ## Avaliação de IA
 
-`evals/cases.json` traz **15 casos**: as 10 mensagens do enunciado + composta, terminal ambíguo, produto inexistente (sem evidência), cliente desconhecido e tentativa de troca de usuário. Cada caso define rota, ferramentas, fontes aceitáveis, valores que devem ser preservados e afirmações proibidas.
+`evals/cases.json` traz **15 casos**: as 10 mensagens do enunciado + composta, terminal ambíguo, produto inexistente (sem evidência), cliente desconhecido e tentativa de troca de usuário. Cada caso define rota, ferramentas obrigatórias e permitidas (qualquer outra reprova), fontes aceitáveis, status, valores ligados ao seu status, valores monetários permitidos, âncoras semânticas e afirmações proibidas; listas vazias ficam fora do denominador e erros de requisição contam como falha. Cada execução grava um relatório JSON por caso em `evals/reports/`.
 
 ```bash
 docker compose up -d
