@@ -1,5 +1,5 @@
 from app.schemas import ChatResponse
-from evals.run_evals import Case, load_cases, score_case
+from evals.run_evals import Case, load_cases, score_case, score_error, summarize
 
 ENUNCIADO_MESSAGES = [
     "What's the difference between the Get Clássica and the Get Smart?",
@@ -39,10 +39,12 @@ def case(**overrides: object) -> Case:
         "message": "m",
         "user_id": "cliente1988",
         "expected_workflow": "support",
-        "expected_tools": ["get_receivables"],
+        "required_tools": ["get_receivables"],
         "expected_source_urls_any": None,
         "expected_status": "answered",
         "must_preserve": ["1.250,00"],
+        "must_preserve_records": [["1.250,00", "previsto"]],
+        "allowed_amounts": ["1.250,00"],
         "must_not_claim": ["confirmado"],
     }
     return Case(**{**base, **overrides})  # type: ignore[arg-type]
@@ -84,3 +86,124 @@ def test_score_case_checks_expected_sources_any_match() -> None:
     missing = score_case(case(expected_source_urls_any=expected), response())
     assert ok.checks["sources"] is True
     assert missing.checks["sources"] is False
+
+
+SMART = "https://site.getnet.com.br/get-ajuda-maquininha/solucoes-get-smart/"
+CREDIARIO = "https://site.getnet.com.br/crediario/"
+
+
+def kb_source(url: str) -> dict[str, str]:
+    return {"id": "c1", "type": "kb_chunk", "url": url, "title": "t"}
+
+
+def knowledge_case(**overrides: object) -> Case:
+    base: dict[str, object] = {
+        "expected_workflow": "knowledge",
+        "required_tools": ["retrieve_getnet_knowledge"],
+        "expected_source_urls_any": [CREDIARIO],
+        "must_preserve": [],
+        "must_preserve_records": [],
+        "allowed_amounts": None,
+        "must_mention_any": [["48"]],
+        "must_not_claim": [],
+    }
+    return case(**{**base, **overrides})
+
+
+def knowledge_response(answer: str, **overrides: object) -> ChatResponse:
+    base: dict[str, object] = {
+        "answer": answer,
+        "workflow": "knowledge",
+        "agents_used": ["router", "knowledge"],
+        "tools_used": ["retrieve_getnet_knowledge"],
+        "sources": [kb_source(CREDIARIO)],
+    }
+    return response(**{**base, **overrides})
+
+
+def test_wrong_answer_with_valid_source_fails() -> None:
+    wrong = knowledge_response("Com o crediário você parcela em até 12 vezes.")
+    right = knowledge_response("Com o Crediário, o cliente parcela em até 48 vezes.")
+    assert score_case(knowledge_case(), wrong).checks["anchors"] is False
+    assert score_case(knowledge_case(), right).passed
+
+
+def test_extra_private_tool_fails_even_when_required_ones_ran() -> None:
+    extra = knowledge_response(
+        "Até 48 vezes.", tools_used=["retrieve_getnet_knowledge", "get_receivables"]
+    )
+    assert score_case(knowledge_case(), extra).checks["tools"] is False
+
+
+def test_allowed_extra_tool_passes_and_order_is_enforced_when_required() -> None:
+    c = case(
+        required_tools=["get_terminal_diagnostics", "retrieve_getnet_knowledge"],
+        ordered=True,
+        must_preserve=[],
+        must_preserve_records=[],
+        allowed_amounts=None,
+    )
+    right = response(tools_used=["get_terminal_diagnostics", "retrieve_getnet_knowledge"])
+    reversed_ = response(tools_used=["retrieve_getnet_knowledge", "get_terminal_diagnostics"])
+    assert score_case(c, right).checks["tools"] is True
+    assert score_case(c, reversed_).checks["tools"] is False
+    loose = case(required_tools=["get_receivables"], allowed_tools=["web_search"])
+    assert score_case(loose, response(tools_used=["get_receivables", "web_search"])).checks["tools"]
+
+
+def test_number_bound_to_wrong_status_fails_records() -> None:
+    wrong = response(
+        answer="- Venda R-1: R$ 1.250,00, status: pago\n- Venda R-2: R$ 480,50, status: previsto"
+    )
+    assert score_case(case(), wrong).checks["records"] is False
+
+
+def test_contradicting_amount_in_free_text_fails() -> None:
+    contradiction = response(
+        answer="- Venda R-1: R$ 1.250,00, status: previsto\nO total é R$ 9.999,00 amanhã."
+    )
+    score = score_case(case(), contradiction)
+    assert score.checks["amounts"] is False
+    assert not score.passed
+
+
+def test_contradictory_status_fails() -> None:
+    bad = knowledge_response("Até 48 vezes.", status="insufficient_evidence")
+    assert score_case(knowledge_case(), bad).checks["status"] is False
+
+
+def test_legitimate_rewording_passes() -> None:
+    reworded = knowledge_response(
+        "With the Crediário, your customer can split purchases into up to 48 installments."
+    )
+    assert score_case(knowledge_case(), reworded).passed
+
+
+def test_empty_lists_are_not_applicable_and_terms_match_whole_words() -> None:
+    c = knowledge_case(must_mention_any=[], expected_source_urls_any=None)
+    score = score_case(c, knowledge_response("qualquer"))
+    assert score.checks["preserve"] is None
+    assert score.checks["forbidden"] is None
+    assert score.checks["anchors"] is None
+    assert score.checks["sources"] is None
+    word = knowledge_case(must_mention_any=[["48"]])
+    assert score_case(word, knowledge_response("até 480 vezes")).checks["anchors"] is False
+
+
+def test_request_errors_count_as_failures_in_every_applicable_check() -> None:
+    err = score_error(case(), "HTTP 503")
+    ok = score_case(case(), response())
+    assert not err.passed
+    summary = summarize([ok, err])
+    assert summary.errors == 1 and summary.passed == 1
+    assert summary.metrics["route"] == {"ok": 1, "applicable": 2}
+    assert summary.metrics["sources"] == {"ok": 0, "applicable": 0}
+
+
+def test_financial_cases_bind_values_to_status_and_restrict_amounts() -> None:
+    by_id = {c.id: c for c in load_cases()}
+    e03 = by_id["e03-yesterday-sales-deposit"]
+    assert ["1.250,00", "previsto"] in e03.must_preserve_records
+    assert e03.allowed_amounts == ["1.250,00", "480,50"]
+    assert by_id["x14-unknown-customer-receivables"].allowed_amounts == []
+    assert by_id["e05-machine-wont-connect"].ordered
