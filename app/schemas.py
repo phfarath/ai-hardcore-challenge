@@ -15,6 +15,7 @@ Status = Literal[
     "customer_not_found",
 ]
 EvidenceType = Literal["kb_chunk", "web_result", "customer_record"]
+DiagnosticGoal = Literal["connectivity", "transaction_decline", "general"]
 
 
 class ChatRequest(BaseModel):
@@ -28,6 +29,8 @@ class Task(BaseModel):
     # default_factory (não `default`): o schema enviado ao LLM não pode ter a palavra-chave
     # `default`, que o modo estrito de structured outputs pode recusar
     source_scope: Literal["getnet", "web", "auto"] = Field(default_factory=lambda: "auto")
+    # o que o cliente quer diagnosticar: escolhe quais fatos do terminal seguem ao Knowledge
+    diagnostic_goal: DiagnosticGoal = Field(default_factory=lambda: "general")
 
 
 class RoutePlan(BaseModel):

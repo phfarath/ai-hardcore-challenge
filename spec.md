@@ -103,7 +103,7 @@ Ferramentas: `retrieve_getnet_knowledge(query, market, topic)` e `web_search(que
 - Pergunta de prazo de recebimento genérico → Knowledge; "quando recebo *minhas* vendas" → Support.
 
 ### 4.5 Fluxo `support_then_knowledge`
-Support chama diagnóstico; o executor extrai um contexto reduzido (`terminal_model`, `error_code`, `issue`) e o repassa ao Knowledge. Dados bancários e identificadores privados não são repassados.
+O Router marca na tarefa support o `diagnostic_goal` (`connectivity`, `transaction_decline` ou `general`). Support chama diagnóstico; o executor extrai um contexto reduzido (`terminal_model`, `error_code`, `issue`) segundo esse objetivo e o repassa ao Knowledge. Conexão e recusa são observações separadas: uma pergunta sobre recusa leva o código da transação (ex.: 51), não o erro de conexão (ex.: ADQ 1-19), e um objetivo sem observação correspondente vira `issue="none"` em vez de emprestar o outro problema. Com `general`, a conectividade é o problema principal e o código de recusa segue como `decline_code`. Dados bancários e identificadores privados não são repassados.
 
 ### 4.6 Fluxo `combined`
 Duas subperguntas independentes, executadas em sequência; composição em duas seções. Se um ramo falha, retorna a parte válida com `status="partial"` e informa a pendência.

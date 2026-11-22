@@ -76,13 +76,55 @@ def _terminal_with_decline_and_connectivity_error() -> ToolResult:
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T03: contexto público ignora a intenção do diagnóstico")
 def test_decline_question_gets_decline_context_not_connectivity() -> None:
-    context = extract_public_context(  # type: ignore[call-arg]
+    context = extract_public_context(
         _terminal_with_decline_and_connectivity_error(), goal="transaction_decline"
     )
     assert context["issue"] == "transaction_declined"
     assert context["error_code"] == "51"
+    connectivity = extract_public_context(
+        _terminal_with_decline_and_connectivity_error(), goal="connectivity"
+    )
+    assert connectivity["issue"] == "connectivity"
+    assert connectivity["error_code"] == "ADQ 1-19"
+    assert "decline_code" not in connectivity
+    general = extract_public_context(_terminal_with_decline_and_connectivity_error())
+    assert general["issue"] == "connectivity"
+    assert general["decline_code"] == "51"
+
+
+def test_decline_goal_without_observed_decline_does_not_borrow_connectivity_error() -> None:
+    result = ToolResult(
+        status="ok",
+        data={
+            "terminal": {
+                "model": "Get Smart",
+                "connection_state": "offline",
+                "last_error_code": "ADQ 1-19",
+                "last_transaction": {"status": "approved"},
+            }
+        },
+    )
+    context = extract_public_context(result, goal="transaction_decline")
+    assert context == {"terminal_model": "Get Smart", "issue": "none"}
+
+
+async def test_diagnostics_prose_keeps_tool_amounts_and_drops_invented_ones() -> None:
+    llm = ScriptedLLM(
+        [
+            tool_call_turn("get_terminal_diagnostics", terminal_id=None),
+            final_turn(
+                AgentOutput(
+                    answer="A última venda, de R$ 89,90, foi recusada com o código 51. "
+                    "Você será reembolsado em R$ 150,00 amanhã."
+                )
+            ),
+        ]
+    )
+    task = Task(agent="support", question="Minha venda foi recusada")
+    result = await run_support(llm, ctx_for(), CUSTOMER_TOOLS, task)
+    assert "R$ 89,90" in result.answer
+    assert "150,00" not in result.answer
 
 
 @pytest.mark.xfail(strict=True, reason="T06: evidência genérica ainda conta como suficiente")

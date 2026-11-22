@@ -27,6 +27,7 @@ from app.schemas import (
     AgentResult,
     ChatRequest,
     ChatResponse,
+    DiagnosticGoal,
     Evidence,
     RoutePlan,
     SourceRef,
@@ -67,22 +68,33 @@ def _loggable_ids(evidence: list[Evidence]) -> list[str]:
     return [e.id for e in evidence if e.type != "customer_record"]
 
 
-def extract_public_context(result: ToolResult) -> dict[str, str]:
+def extract_public_context(result: ToolResult, goal: DiagnosticGoal = "general") -> dict[str, str]:
     """Do diagnóstico do terminal, só o que ajuda numa busca pública: nada de ids, valores ou
-    dados do cliente."""
+    dados do cliente. Conexão e recusa são observações separadas; o objetivo da pergunta escolhe
+    qual delas é o problema, sem atribuir uma causa comum só porque aparecem juntas."""
     terminal = result.data.get("terminal")
     if result.status != "ok" or not terminal:
         return {}
     last_tx = terminal.get("last_transaction") or {}
-    if terminal["connection_state"] == "offline" or terminal.get("last_error_code"):
-        issue, code = "connectivity", terminal.get("last_error_code")
-    elif last_tx.get("status") == "declined":
-        issue, code = "transaction_declined", last_tx.get("decline_code")
+    offline = terminal["connection_state"] == "offline"
+    connectivity = offline or bool(terminal.get("last_error_code"))
+    declined = last_tx.get("status") == "declined"
+    observed: dict[str, tuple[str, str | None]] = {}
+    if connectivity:
+        observed["connectivity"] = ("connectivity", terminal.get("last_error_code"))
+    if declined:
+        observed["transaction_decline"] = ("transaction_declined", last_tx.get("decline_code"))
+    if goal == "general":
+        primary = next(iter(observed), None)  # conexão primeiro: sem ela nada transaciona
     else:
-        issue, code = "none", None
+        primary = goal if goal in observed else None
+    issue, code = observed[primary] if primary else ("none", None)
     context = {"terminal_model": terminal["model"], "issue": issue}
     if code:
         context["error_code"] = code
+    other = "transaction_decline" if primary == "connectivity" else None
+    if goal == "general" and other in observed and observed[other][1]:
+        context["decline_code"] = observed[other][1] or ""
     return context
 
 
@@ -105,6 +117,7 @@ class _Run:
         self.failures: list[tuple[str, Exception]] = []
         self.customer_tools: list[ToolSpec] = build_customer_tools(deps.repo)
         self.knowledge_tools: list[ToolSpec] = build_knowledge_tools(deps.index, deps.search)
+        self.diagnostic_goal: DiagnosticGoal = "general"
 
     @property
     def stop(self) -> bool:
@@ -142,6 +155,7 @@ class _Run:
         )
 
     async def support(self, task: Task) -> None:
+        self.diagnostic_goal = task.diagnostic_goal
         await self.step(
             "suporte",
             lambda: run_support(self.deps.llm, self.ctx, self.customer_tools, task),
@@ -155,7 +169,7 @@ class _Run:
 
     def diagnostics_context(self) -> dict[str, str] | None:
         for result in reversed(self.ctx.tool_results):
-            technical = extract_public_context(result)
+            technical = extract_public_context(result, self.diagnostic_goal)
             if technical:
                 return technical
         return None

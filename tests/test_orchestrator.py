@@ -432,3 +432,36 @@ async def test_healthy_terminal_without_guidance_stays_partial(tmp_path: Path) -
     deps = await make_deps(tmp_path, llm)
     response = await handle_chat(req("Minha maquininha não conecta.", "cliente2000"), deps)
     assert response.status == "partial"
+
+
+async def test_decline_goal_sends_decline_code_not_connectivity_error_to_knowledge(
+    tmp_path: Path,
+) -> None:
+    decline_plan = RoutePlan(
+        workflow="support_then_knowledge",
+        tasks=[
+            Task(
+                agent="support",
+                question="diagnosticar a transação recusada",
+                diagnostic_goal="transaction_decline",
+            ),
+            Task(agent="knowledge", question="orientação oficial para a recusa"),
+        ],
+    )
+    llm = ScriptedLLM(
+        [
+            final_turn(decline_plan),
+            tool_call_turn("get_terminal_diagnostics"),
+            final_turn(answer("A última transação foi recusada com o código 51.")),
+            *knowledge_rag("Verifique o Wi-Fi ou o chip.", ADQ_CHUNK_ID),
+        ]
+    )
+    await handle_chat(
+        req("My card machine is showing a transaction decline error."),
+        await make_deps(tmp_path, llm),
+    )
+    knowledge_calls = [c for c in llm.calls if "agente de Conhecimento" in c[0]["content"]]
+    question = knowledge_calls[0][1]["content"]
+    assert '"issue": "transaction_declined"' in question
+    assert '"error_code": "51"' in question
+    assert "ADQ 1-19" not in question
