@@ -1,6 +1,8 @@
 """Customer Support Agent: dados individuais do cliente via ferramentas."""
 
 import re
+from decimal import Decimal, InvalidOperation
+from typing import Any
 
 from app.context import RequestContext
 from app.llm import LLMClient, ToolSpec, run_agent
@@ -8,22 +10,48 @@ from app.prompts import SUPPORT_SYSTEM, today_label
 from app.schemas import AgentOutput, AgentResult, Evidence, Status, Task, ToolResult
 from app.tools.customer import render_receivables
 
-_PAID_CLAIM = re.compile(
-    r"confirmad|confirmed|\bpag[oa]s?\b|\bpaid\b|depositad|deposited|liquidad|settled"
-    r"|creditad|credited",
-    re.IGNORECASE,
-)
-_UNPAID_NOTE = (
-    "Atenção: considere apenas o status exibido acima para cada venda; "
-    "um recebimento 'previsto' ainda não foi pago."
-)
+_AMOUNT = re.compile(r"\d{1,3}(?:[.,]\d{3})*[.,]\d{2}(?!\d)|\d+[.,]\d{2}(?!\d)")
+_SENTENCE = re.compile(r"(?<=[.!?])\s+|\n+")
+
+
+def _decimal(text: str) -> Decimal | None:
+    """'1.250,00', '1,250.00', '89,90' e '89.90' viram Decimal: o último separador é o decimal."""
+    integer, decimals = text[:-3], text[-2:]
+    try:
+        return Decimal(re.sub(r"[.,]", "", integer) + "." + decimals)
+    except InvalidOperation:
+        return None
+
+
+def _tool_amounts(value: Any) -> set[Decimal]:
+    if isinstance(value, dict):
+        found = {d for k, v in value.items() if k == "amount" and (d := _decimal_or_none(v))}
+        return found.union(*(_tool_amounts(v) for v in value.values()))
+    if isinstance(value, list):
+        return set().union(*(_tool_amounts(v) for v in value))
+    return set()
+
+
+def _decimal_or_none(value: Any) -> Decimal | None:
+    try:
+        return Decimal(str(value))
+    except InvalidOperation:
+        return None
 
 
 def _safe_prose(prose: str, results: list[ToolResult]) -> str:
-    """O texto livre do LLM não pode afirmar pagamento/confirmação de um recebimento que a
-    ferramenta não marca como `pago`: nesse caso ele é trocado por uma nota fixa."""
-    unpaid = any(row["status"] != "pago" for r in results for row in r.data.get("receivables", []))
-    return _UNPAID_NOTE if unpaid and _PAID_CLAIM.search(prose) else prose
+    """Texto do LLM só entra quando não há recebíveis (esses são renderizados pelo servidor,
+    com as notas de status) e, mesmo assim, sem frases com valores que nenhuma ferramenta
+    devolveu."""
+    if any("receivables" in r.data for r in results):
+        return ""
+    allowed = set().union(*(_tool_amounts(r.data) for r in results))
+    kept = [
+        sentence
+        for sentence in _SENTENCE.split(prose)
+        if all(_decimal(m) in allowed for m in _AMOUNT.findall(sentence))
+    ]
+    return " ".join(s.strip() for s in kept if s.strip())
 
 
 def _status(results: list[ToolResult]) -> Status:
@@ -46,9 +74,8 @@ async def run_support(
     output, results = await run_agent(
         llm, ctx, system=system, user=task.question, tools=tools, output_model=AgentOutput
     )
-    # valores, datas e status financeiros vêm do template, não da geração do LLM
     blocks = [render_receivables(r) for r in results if "receivables" in r.data]
-    answer = "\n\n".join([*[b for b in blocks if b], _safe_prose(output.answer, results)])
+    answer = "\n\n".join(p for p in [*blocks, _safe_prose(output.answer, results)] if p)
     evidence: dict[str, Evidence] = {}
     for result in results:
         for item in result.evidence:

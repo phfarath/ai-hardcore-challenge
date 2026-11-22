@@ -225,7 +225,7 @@ async def test_support_strips_english_paid_claims_too() -> None:
     assert "confirmed" not in result.answer.lower()
 
 
-async def test_support_keeps_harmless_prose() -> None:
+async def test_support_receivables_answer_is_fully_server_rendered() -> None:
     llm = ScriptedLLM(
         [
             tool_call_turn("get_receivables", sales_date="2026-11-06"),
@@ -233,7 +233,8 @@ async def test_support_keeps_harmless_prose() -> None:
         ]
     )
     result = await run_support(llm, ctx_for(), CUSTOMER_TOOLS, Task(agent="support", question="q"))
-    assert "Duas vendas têm datas de liquidação diferentes." in result.answer
+    assert "Duas vendas" not in result.answer
+    assert result.answer.splitlines()[-1].startswith("Status 'previsto'")
 
 
 async def test_knowledge_without_evidence_never_passes_through_the_llm_text(

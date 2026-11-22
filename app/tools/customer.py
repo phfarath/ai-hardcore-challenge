@@ -120,4 +120,14 @@ def render_receivables(result: ToolResult) -> str:
             f"- Venda {r['id']}: {_money(r['amount'], r['currency'])}, "
             f"liquidação em {_br_date(r['settlement_date'])}, status: {r['status']}"
         )
+    lines.extend(note for s, note in _STATUS_NOTES.items() if any(r["status"] == s for r in rows))
     return "\n".join(lines)
+
+
+_STATUS_NOTES = {
+    "previsto": "Status 'previsto': a liquidação está prevista para a data indicada; o valor "
+    "ainda não foi pago.",
+    "pago": "Status 'pago': o valor já foi liquidado.",
+    "bloqueado": "Status 'bloqueado': o recebimento está bloqueado; o motivo não consta nestes "
+    "dados. Para detalhes, procure a central de atendimento.",
+}

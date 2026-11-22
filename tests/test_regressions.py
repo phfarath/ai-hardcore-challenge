@@ -29,7 +29,6 @@ def ctx_for(user_id: str = "cliente1988") -> RequestContext:
     return RequestContext(request_id="r", user_id=user_id, clock=FrozenClock(), budget=Budget())
 
 
-@pytest.mark.xfail(strict=True, reason="T03: prosa financeira livre ainda é anexada ao template")
 async def test_free_text_cannot_contradict_receivables_amounts() -> None:
     llm = ScriptedLLM(
         [
@@ -41,6 +40,24 @@ async def test_free_text_cannot_contradict_receivables_amounts() -> None:
     result = await run_support(llm, ctx_for(), CUSTOMER_TOOLS, task)
     assert "R$ 1.250,00" in result.answer
     assert "9.999,00" not in result.answer
+
+
+async def test_diagnostics_prose_keeps_tool_amounts_and_drops_invented_ones() -> None:
+    llm = ScriptedLLM(
+        [
+            tool_call_turn("get_terminal_diagnostics", terminal_id=None),
+            final_turn(
+                AgentOutput(
+                    answer="A última venda, de R$ 89,90, foi recusada com o código 51. "
+                    "Você será reembolsado em R$ 150,00 amanhã."
+                )
+            ),
+        ]
+    )
+    task = Task(agent="support", question="Minha venda foi recusada")
+    result = await run_support(llm, ctx_for(), CUSTOMER_TOOLS, task)
+    assert "R$ 89,90" in result.answer
+    assert "150,00" not in result.answer
 
 
 def _terminal_with_decline_and_connectivity_error() -> ToolResult:
