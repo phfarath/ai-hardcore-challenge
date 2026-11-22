@@ -165,7 +165,7 @@ Notas: o enunciado sugere o site global, mas os cenários são brasileiros, ent�
 ## Guardrails e confiabilidade
 
 - Validação de entrada antes de qualquer chamada ao LLM; identidade só no `RequestContext`; o repositório filtra por esse contexto e terminais de outro cliente nunca são revelados.
-- Plano do Router validado pelo código; limites por requisição configuráveis (≤2 especialistas, ≤6 chamadas LLM incluindo retry, ≤4 ferramentas, ≤1 busca web, deadline 40 s).
+- Plano do Router validado pelo código; limites por requisição configuráveis (≤2 especialistas, ≤8 chamadas LLM incluindo retry e verificação, ≤4 ferramentas, ≤1 busca web, deadline 40 s).
 - Evidências verificadas pelo servidor; sem evidência validada → `insufficient_evidence` **e o texto do LLM é descartado** (resposta fixa "não encontrei nas fontes"), para não vazar condição comercial vinda da memória do modelo.
 - Falhas de um ramo viram `partial`. `handoff_recommended` é emitido quando há **problema técnico diagnosticado e nenhuma orientação oficial** (`support_then_knowledge`): é só uma recomendação, nunca um atendimento aberto. Terminal ambíguo vira `needs_clarification`.
 - Busca web recebe só consulta pública (sem dados do cliente); logs não contêm mensagem, resposta nem `user_id`.
@@ -241,7 +241,7 @@ Todo o código, os testes, a documentação e as revisões foram feitos com **um
 ## Limitações conhecidas
 
 - Dados de clientes são sintéticos; o `user_id` não é autenticado.
-- `insufficient_evidence` depende de o modelo não citar evidência quando não encontra a informação (caso `x13` dos `evals`): o texto da resposta é honesto, mas o status pode sair `answered`.
+- A verificação de suporte e cobertura do Knowledge é uma chamada de LLM: é calibrada pelo prompt e varia entre execuções. Ela é conservadora (prefere `partial`/`insufficient_evidence` a liberar texto sem suporte); em duas rodadas seguidas dos `evals` após a revisão v2, o placar foi 13/15 e 11/15, com o `x13` corrigido nas duas e as falhas restantes em `partial` (comparação Get Clássica × Get Smart, Pix, conexão) e em uma cotação web com snippet ambíguo.
 - O texto do Suporte pode sair em português mesmo com pergunta em inglês (o bloco de recebíveis é um template em português); o Conhecimento responde no idioma da pergunta.
 - O filtro que impede o LLM de afirmar "pago/confirmado" é por padrões (pt/en) e é conservador: pode trocar frases inofensivas por uma nota fixa.
 - Os itens de "Pendências" vêm do próprio modelo e podem terminar com ponto duplicado.
