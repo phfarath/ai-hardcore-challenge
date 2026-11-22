@@ -8,8 +8,6 @@ a marcação. Assim o defeito fica registrado antes da mudança de comportamento
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
-
 from app.agents.knowledge import run_knowledge
 from app.agents.support import run_support
 from app.context import Budget, RequestContext
@@ -19,7 +17,16 @@ from app.repositories import JsonCustomerRepository
 from app.schemas import AgentOutput, Task, ToolResult
 from app.tools.customer import build_customer_tools
 from app.tools.knowledge import build_knowledge_tools
-from tests.fakes import FakeEmbedder, FrozenClock, ScriptedLLM, final_turn, tool_call_turn
+from tests.fakes import (
+    FakeEmbedder,
+    FrozenClock,
+    ScriptedLLM,
+    claim,
+    final_turn,
+    kout,
+    tool_call_turn,
+    verdict,
+)
 
 CUSTOMER_TOOLS = build_customer_tools(JsonCustomerRepository("data/fixtures/customers.json"))
 FAQ_URL = "https://site.getnet.com.br/duvidas/"
@@ -109,7 +116,6 @@ def test_decline_goal_without_observed_decline_does_not_borrow_connectivity_erro
     assert context == {"terminal_model": "Get Smart", "issue": "none"}
 
 
-@pytest.mark.xfail(strict=True, reason="T06: evidência genérica ainda conta como suficiente")
 async def test_generic_evidence_does_not_answer_specific_product_rate(tmp_path: Path) -> None:
     index = KnowledgeIndex(str(tmp_path / "idx"), FakeEmbedder())
     chunks = chunk_document(
@@ -122,12 +128,18 @@ async def test_generic_evidence_does_not_answer_specific_product_rate(tmp_path: 
     llm = ScriptedLLM(
         [
             tool_call_turn("retrieve_getnet_knowledge", query="taxa Getnet Quantum 9000"),
+            # o modelo marca como coberta uma pergunta específica com um trecho genérico
             final_turn(
-                AgentOutput(
-                    answer="As taxas variam conforme o plano contratado.",
-                    evidence_ids=[chunks[0].chunk_id],
+                kout(
+                    "As taxas variam conforme o plano contratado.",
+                    claim(
+                        chunks[0].chunk_id,
+                        "As taxas das maquininhas variam conforme o plano contratado.",
+                        obligation="taxa da maquininha Getnet Quantum 9000",
+                    ),
                 )
             ),
+            final_turn(verdict(False, uncovered=["taxa da maquininha Getnet Quantum 9000"])),
         ]
     )
     task = Task(
@@ -137,3 +149,5 @@ async def test_generic_evidence_does_not_answer_specific_product_rate(tmp_path: 
     )
     result = await run_knowledge(llm, ctx_for(), build_knowledge_tools(index, None), task)
     assert result.status == "insufficient_evidence"
+    assert result.evidence == []
+    assert "variam conforme o plano" not in result.answer

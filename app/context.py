@@ -25,6 +25,10 @@ class IndexUnavailable(Exception):
     """O índice de conhecimento está ausente ou é incompatível com o embedder atual."""
 
 
+class VerificationUnavailable(Exception):
+    """A verificação obrigatória da resposta não concluiu: o rascunho não pode ser entregue."""
+
+
 class Clock(Protocol):
     def now(self) -> datetime: ...
 
@@ -40,7 +44,7 @@ class SystemClock:
 class Budget:
     def __init__(
         self,
-        max_llm_calls: int = 6,
+        max_llm_calls: int = 8,
         max_tool_calls: int = 4,
         max_web_searches: int = 1,
         deadline_seconds: float = 40.0,
@@ -51,15 +55,24 @@ class Budget:
         self._deadline = deadline_seconds
         self._started = time.monotonic()
         self.llm_calls = 0
+        self.reserved_llm_calls = 0
         self.tool_calls = 0
         self.web_searches = 0
         self.prompt_tokens = 0
         self.completion_tokens = 0
 
     def charge_llm(self) -> None:
-        if self.llm_calls >= self._max_llm:
+        if self.llm_calls + self.reserved_llm_calls >= self._max_llm:
             raise BudgetExceeded("llm call limit reached")
         self.llm_calls += 1
+
+    def reserve_llm(self, calls: int) -> None:
+        """Guarda chamadas para uma etapa posterior obrigatória (ex.: verificação): o loop de
+        ferramentas não pode consumi-las."""
+        self.reserved_llm_calls += calls
+
+    def release_llm(self, calls: int) -> None:
+        self.reserved_llm_calls = max(0, self.reserved_llm_calls - calls)
 
     def charge_tool(self) -> None:
         if self.tool_calls >= self._max_tool:
@@ -89,6 +102,7 @@ class RequestContext:
     user_id: str
     clock: Clock
     budget: Budget
+    message: str = ""
     evidence: dict[str, Evidence] = field(default_factory=dict)
     tool_results: list[ToolResult] = field(default_factory=list)
     tools_used: list[str] = field(default_factory=list)

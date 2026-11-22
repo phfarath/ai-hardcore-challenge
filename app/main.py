@@ -15,6 +15,7 @@ from app.context import (
     IndexUnavailable,
     ProviderUnavailable,
     SystemClock,
+    VerificationUnavailable,
 )
 from app.deps import Deps
 from app.llm import OpenAIClient
@@ -92,6 +93,11 @@ def create_app(deps: Deps | None = None) -> FastAPI:
     async def _index_down(_: Request, exc: IndexUnavailable) -> JSONResponse:
         log_event("request_failed", error_code="IndexUnavailable", detail=str(exc))
         return error(503, "index_unavailable")
+
+    @app.exception_handler(VerificationUnavailable)
+    async def _verification_down(_: Request, exc: VerificationUnavailable) -> JSONResponse:
+        log_event("request_failed", error_code="VerificationUnavailable", detail=str(exc))
+        return error(503, "verification_unavailable")
 
     @app.exception_handler(DeadlineExceeded)
     async def _deadline(_: Request, __: DeadlineExceeded) -> JSONResponse:

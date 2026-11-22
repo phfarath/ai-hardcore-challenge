@@ -96,3 +96,44 @@ class ChatResponse(BaseModel):
     data_mode: Literal["demo"] | None = None
     workflow: Workflow | None = None
     tools_used: list[str] = Field(default_factory=list)
+
+
+class Claim(BaseModel):
+    """Uma parte da pergunta e a afirmação que a responde, com o trecho literal que a sustenta."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    obligation: str
+    status: Literal["covered", "not_found"]
+    statement: str
+    evidence_id: str | None
+    quote: str | None
+
+
+class KnowledgeOutput(BaseModel):
+    """Saída estruturada do Knowledge: o status final é calculado pelo servidor, não por ele."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    answer: str
+    claims: list[Claim]
+    pending: list[str]
+
+
+class ClaimVerdict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    claim: int
+    supported: bool
+    reason: str
+
+
+class VerificationOutput(BaseModel):
+    """Saída do verificador semântico: suporte por afirmação e cobertura da pergunta."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    verdicts: list[ClaimVerdict]
+    answers_question: bool
+    uncovered: list[str]
+    answer_consistent: bool

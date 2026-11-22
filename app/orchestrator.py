@@ -19,6 +19,7 @@ from app.context import (
     IndexUnavailable,
     ProviderUnavailable,
     RequestContext,
+    VerificationUnavailable,
 )
 from app.deps import Deps
 from app.llm import ToolSpec
@@ -38,12 +39,19 @@ from app.schemas import (
 from app.tools.customer import build_customer_tools
 from app.tools.knowledge import build_knowledge_tools
 
-_STEP_FAILURES = (BudgetExceeded, DeadlineExceeded, ProviderUnavailable, IndexUnavailable)
+_STEP_FAILURES = (
+    BudgetExceeded,
+    DeadlineExceeded,
+    ProviderUnavailable,
+    IndexUnavailable,
+    VerificationUnavailable,
+)
 _REASONS: dict[type[Exception], str] = {
     BudgetExceeded: "o limite de processamento da requisição foi atingido",
     DeadlineExceeded: "o tempo limite da requisição foi atingido",
     ProviderUnavailable: "o provedor de IA está indisponível",
     IndexUnavailable: "a base de conhecimento está indisponível",
+    VerificationUnavailable: "a verificação das fontes não pôde ser concluída",
 }
 _LABELS = {"customer_support": "Suporte ao cliente", "knowledge": "Conhecimento"}
 _HANDOFF_NOTE = (
@@ -161,10 +169,17 @@ class _Run:
             lambda: run_support(self.deps.llm, self.ctx, self.customer_tools, task),
         )
 
-    async def knowledge(self, task: Task, technical: dict[str, str] | None = None) -> None:
+    async def knowledge(
+        self,
+        task: Task,
+        technical: dict[str, str] | None = None,
+        original_message: str | None = None,
+    ) -> None:
         await self.step(
             "conhecimento",
-            lambda: run_knowledge(self.deps.llm, self.ctx, self.knowledge_tools, task, technical),
+            lambda: run_knowledge(
+                self.deps.llm, self.ctx, self.knowledge_tools, task, technical, original_message
+            ),
         )
 
     def diagnostics_context(self) -> dict[str, str] | None:
@@ -178,7 +193,7 @@ class _Run:
 async def _run_workflow(plan: RoutePlan, run: _Run) -> None:
     tasks = {t.agent: t for t in plan.tasks}
     if plan.workflow == "knowledge":
-        await run.knowledge(tasks["knowledge"])
+        await run.knowledge(tasks["knowledge"], original_message=run.ctx.message)
     elif plan.workflow == "support":
         await run.support(tasks["support"])
     elif plan.workflow == "support_then_knowledge":
@@ -225,6 +240,7 @@ async def handle_chat(
     ctx = RequestContext(
         request_id=request_id or f"req_{uuid.uuid4().hex[:12]}",
         user_id=req.user_id,
+        message=req.message,
         clock=deps.clock,
         budget=Budget(
             max_llm_calls=s.max_llm_calls,

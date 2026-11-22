@@ -10,12 +10,18 @@ from app.schemas import AgentOutput, AgentResult, ChatRequest, RoutePlan, Task, 
 from app.tools.search import SearchUnavailable, WebResult
 from tests.fakes import (
     ADQ_CHUNK_ID,
+    ADQ_QUOTE,
     SMART_CHUNK_ID,
+    SMART_QUOTE,
     FakeSearch,
     ScriptedLLM,
+    claim,
     final_turn,
+    knowledge_turns,
+    kout,
     make_deps,
     tool_call_turn,
+    verdict,
 )
 
 YESTERDAY = "2026-11-06"
@@ -37,11 +43,11 @@ def answer(text: str, *ids: str) -> AgentOutput:
     return AgentOutput(answer=text, evidence_ids=list(ids))
 
 
+QUOTES = {SMART_CHUNK_ID: SMART_QUOTE, ADQ_CHUNK_ID: ADQ_QUOTE}
+
+
 def knowledge_rag(text: str, chunk_id: str) -> list:  # type: ignore[type-arg]
-    return [
-        tool_call_turn("retrieve_getnet_knowledge", query="x"),
-        final_turn(answer(text, chunk_id)),
-    ]
+    return knowledge_turns(text, chunk_id, QUOTES[chunk_id])
 
 
 def support_receivables(text: str = "Explicação.") -> list:  # type: ignore[type-arg]
@@ -132,7 +138,7 @@ async def test_combined_partial_when_one_branch_fails(tmp_path: Path) -> None:
         [
             final_turn(plan("combined", ("knowledge", "euro?"), ("support", "vendas de ontem"))),
             tool_call_turn("web_search", query="euro hoje"),
-            final_turn(answer("Não consegui consultar.")),
+            final_turn(kout("Não consegui consultar.")),
             *support_receivables(),
         ]
     )
@@ -161,7 +167,9 @@ async def test_combined_unknown_customer_returns_partial_with_public_branch(
 
 
 async def test_unknown_customer_with_public_question_answers_normally(tmp_path: Path) -> None:
-    hit = WebResult(title="Euro", url="https://example.test/euro", content="R$ 6,10")
+    hit = WebResult(
+        title="Euro", url="https://example.test/euro", content="Euro comercial hoje: R$ 6,10."
+    )
     search = FakeSearch(results=[hit])
     import hashlib
 
@@ -170,7 +178,10 @@ async def test_unknown_customer_with_public_question_answers_normally(tmp_path: 
         [
             final_turn(plan("knowledge", ("knowledge", "cotação do euro hoje"))),
             tool_call_turn("web_search", query="cotação do euro hoje"),
-            final_turn(answer("O euro está a R$ 6,10.", web_id)),
+            final_turn(
+                kout("O euro está a R$ 6,10.", claim(web_id, "Euro comercial hoje: R$ 6,10"))
+            ),
+            final_turn(verdict(True)),
         ]
     )
     response = await handle_chat(
@@ -376,12 +387,13 @@ async def test_pending_items_from_agents_reach_the_answer(tmp_path: Path) -> Non
             final_turn(plan("knowledge", ("knowledge", "Get Smart?"))),
             tool_call_turn("retrieve_getnet_knowledge", query="x"),
             final_turn(
-                AgentOutput(
-                    answer="Tem tela touch.",
-                    evidence_ids=[SMART_CHUNK_ID],
+                kout(
+                    "Tem tela touch.",
+                    claim(SMART_CHUNK_ID, SMART_QUOTE),
                     pending=["preço da Get Smart não encontrado"],
                 )
             ),
+            final_turn(verdict(True)),
         ]
     )
     response = await handle_chat(req(), await make_deps(tmp_path, llm))
@@ -402,7 +414,7 @@ async def test_diagnosed_problem_without_official_guidance_recommends_handoff(
             ),
             tool_call_turn("get_terminal_diagnostics"),
             final_turn(answer("Sua máquina está offline.")),
-            final_turn(answer("Não sei.")),
+            final_turn(kout("Não sei.")),
         ]
     )
     response = await handle_chat(
@@ -426,7 +438,7 @@ async def test_healthy_terminal_without_guidance_stays_partial(tmp_path: Path) -
             ),
             tool_call_turn("get_terminal_diagnostics", terminal_id="T-2000-01"),
             final_turn(answer("Sua máquina está online.")),
-            final_turn(answer("Não sei.")),
+            final_turn(kout("Não sei.")),
         ]
     )
     deps = await make_deps(tmp_path, llm)

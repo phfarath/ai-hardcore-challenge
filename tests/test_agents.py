@@ -17,8 +17,12 @@ from tests.fakes import (
     FakeSearch,
     FrozenClock,
     ScriptedLLM,
+    claim,
     final_turn,
+    kout,
+    missing,
     tool_call_turn,
+    verdict,
 )
 
 SMART_URL = "https://site.getnet.com.br/get-ajuda-maquininha/solucoes-get-smart/"
@@ -114,10 +118,13 @@ async def test_knowledge_rag_answer_has_validated_sources(tmp_path: Path) -> Non
         [
             tool_call_turn("retrieve_getnet_knowledge", query="Get Smart"),
             final_turn(
-                AgentOutput(
-                    answer="A Get Smart tem tela touch.", evidence_ids=[chunk_id, "inventado-1"]
+                kout(
+                    "A Get Smart tem tela touch.",
+                    claim(chunk_id, "A Get Smart tem tela touch e impressora."),
+                    claim("inventado-1", "um trecho que não existe em lugar nenhum"),
                 )
             ),
+            final_turn(verdict(True)),
         ]
     )
     task = Task(agent="knowledge", question="O que é a Get Smart?")
@@ -139,7 +146,7 @@ async def test_knowledge_cannot_cite_customer_records(tmp_path: Path) -> None:
         ]
     )
     await run_support(support_llm, ctx, CUSTOMER_TOOLS, Task(agent="support", question="q"))
-    llm = ScriptedLLM([final_turn(AgentOutput(answer="x", evidence_ids=["R-1988-001"]))])
+    llm = ScriptedLLM([final_turn(kout("x", claim("R-1988-001", "R$ 1.250,00 previsto")))])
     result = await run_knowledge(llm, ctx, tools, Task(agent="knowledge", question="q"))
     assert result.evidence == []
     assert result.status == "insufficient_evidence"
@@ -147,7 +154,7 @@ async def test_knowledge_cannot_cite_customer_records(tmp_path: Path) -> None:
 
 async def test_knowledge_without_valid_evidence_is_insufficient_evidence(tmp_path: Path) -> None:
     tools, _ = await knowledge_tools(tmp_path)
-    llm = ScriptedLLM([final_turn(AgentOutput(answer="Não encontrei.", evidence_ids=["nada"]))])
+    llm = ScriptedLLM([final_turn(kout("Não encontrei.", claim("nada", "trecho inventado aqui")))])
     result = await run_knowledge(llm, ctx_for(), tools, Task(agent="knowledge", question="q"))
     assert result.status == "insufficient_evidence"
     assert result.evidence == []
@@ -158,7 +165,7 @@ async def test_knowledge_web_failure_is_insufficient_evidence(tmp_path: Path) ->
     llm = ScriptedLLM(
         [
             tool_call_turn("web_search", query="cotação do euro hoje"),
-            final_turn(AgentOutput(answer="Não consegui consultar a cotação.")),
+            final_turn(kout("Não consegui consultar a cotação.", missing("cotação"))),
         ]
     )
     task = Task(agent="knowledge", question="Qual a cotação do euro?")
@@ -167,7 +174,9 @@ async def test_knowledge_web_failure_is_insufficient_evidence(tmp_path: Path) ->
 
 
 async def test_knowledge_web_answer_is_answered_with_web_source(tmp_path: Path) -> None:
-    hit = WebResult(title="Euro", url="https://example.test/euro", content="R$ 6,10")
+    hit = WebResult(
+        title="Euro", url="https://example.test/euro", content="Euro comercial hoje: R$ 6,10."
+    )
     search = FakeSearch(results=[hit])
     tools, _ = await knowledge_tools(tmp_path, search)
     ctx = ctx_for()
@@ -175,7 +184,10 @@ async def test_knowledge_web_answer_is_answered_with_web_source(tmp_path: Path) 
     llm = ScriptedLLM(
         [
             tool_call_turn("web_search", query="cotação do euro hoje"),
-            final_turn(AgentOutput(answer="O euro está a R$ 6,10.", evidence_ids=[web_id])),
+            final_turn(
+                kout("O euro está a R$ 6,10.", claim(web_id, "Euro comercial hoje: R$ 6,10"))
+            ),
+            final_turn(verdict(True)),
         ]
     )
     result = await run_knowledge(llm, ctx, tools, Task(agent="knowledge", question="euro?"))
@@ -186,7 +198,7 @@ async def test_knowledge_web_answer_is_answered_with_web_source(tmp_path: Path) 
 
 async def test_knowledge_receives_technical_context_in_user_message(tmp_path: Path) -> None:
     tools, _ = await knowledge_tools(tmp_path)
-    llm = ScriptedLLM([final_turn(AgentOutput(answer="ok"))])
+    llm = ScriptedLLM([final_turn(kout("ok"))])
     await run_knowledge(
         llm,
         ctx_for(),
@@ -241,7 +253,7 @@ async def test_knowledge_without_evidence_never_passes_through_the_llm_text(
     tmp_path: Path,
 ) -> None:
     tools, _ = await knowledge_tools(tmp_path)
-    llm = ScriptedLLM([final_turn(AgentOutput(answer="A taxa é de 1,99% por transação."))])
+    llm = ScriptedLLM([final_turn(kout("A taxa é de 1,99% por transação."))])
     result = await run_knowledge(llm, ctx_for(), tools, Task(agent="knowledge", question="taxa?"))
     assert result.status == "insufficient_evidence"
     assert "1,99" not in result.answer
@@ -250,11 +262,11 @@ async def test_knowledge_without_evidence_never_passes_through_the_llm_text(
 
 async def test_knowledge_source_scope_getnet_hides_web_search(tmp_path: Path) -> None:
     tools, _ = await knowledge_tools(tmp_path, FakeSearch())
-    llm = ScriptedLLM([final_turn(AgentOutput(answer="x"))])
+    llm = ScriptedLLM([final_turn(kout("x"))])
     task = Task(agent="knowledge", question="q", source_scope="getnet")
     await run_knowledge(llm, ctx_for(), tools, task)
     assert [t.name for t in llm.tools_seen[0] or []] == ["retrieve_getnet_knowledge"]
-    llm2 = ScriptedLLM([final_turn(AgentOutput(answer="x"))])
+    llm2 = ScriptedLLM([final_turn(kout("x"))])
     await run_knowledge(llm2, ctx_for(), tools, Task(agent="knowledge", question="q"))
     assert {t.name for t in llm2.tools_seen[0] or []} == {
         "retrieve_getnet_knowledge",
