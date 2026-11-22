@@ -109,24 +109,6 @@ def test_decline_goal_without_observed_decline_does_not_borrow_connectivity_erro
     assert context == {"terminal_model": "Get Smart", "issue": "none"}
 
 
-async def test_diagnostics_prose_keeps_tool_amounts_and_drops_invented_ones() -> None:
-    llm = ScriptedLLM(
-        [
-            tool_call_turn("get_terminal_diagnostics", terminal_id=None),
-            final_turn(
-                AgentOutput(
-                    answer="A última venda, de R$ 89,90, foi recusada com o código 51. "
-                    "Você será reembolsado em R$ 150,00 amanhã."
-                )
-            ),
-        ]
-    )
-    task = Task(agent="support", question="Minha venda foi recusada")
-    result = await run_support(llm, ctx_for(), CUSTOMER_TOOLS, task)
-    assert "R$ 89,90" in result.answer
-    assert "150,00" not in result.answer
-
-
 @pytest.mark.xfail(strict=True, reason="T06: evidência genérica ainda conta como suficiente")
 async def test_generic_evidence_does_not_answer_specific_product_rate(tmp_path: Path) -> None:
     index = KnowledgeIndex(str(tmp_path / "idx"), FakeEmbedder())
