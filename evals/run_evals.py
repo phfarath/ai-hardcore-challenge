@@ -178,14 +178,19 @@ async def _ask(client: httpx.AsyncClient, case: Case) -> ChatResponse | str:
     return ChatResponse(**response.json())
 
 
+def _git(*args: str) -> str:
+    out = subprocess.run(["git", *args], capture_output=True, text=True, check=True)
+    return out.stdout.strip()
+
+
 def _git_commit() -> str:
+    """Commit avaliado; `-dirty` se havia código alterado sem commit (o relatório não o prova)."""
     try:
-        out = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=True
-        )
+        commit = _git("rev-parse", "--short", "HEAD")
+        changed = _git("status", "--porcelain", "--", ".", ":(exclude)evals/reports")
     except (OSError, subprocess.CalledProcessError):
         return "unknown"
-    return out.stdout.strip()
+    return f"{commit}-dirty" if changed else commit
 
 
 def write_report(
