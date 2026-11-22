@@ -218,6 +218,26 @@ Descrito (não implementado): painéis de latência p50/p95 por fluxo e por agen
 - **Nova fonte de conhecimento**: acrescentar a URL em `data/sources.json` e rodar a ingestão.
 - **Dados reais de clientes**: implementar `CustomerRepository` (`app/repositories.py`) e injetar em `build_deps` (`app/main.py`).
 
+## Custo de desenvolvimento (tokens e dinheiro)
+
+Todo o código, os testes, a documentação e as revisões foram feitos com **uma única sessão do Claude Code usando Claude Sonnet 5.5** (`claude-sonnet-5-5`), mais **2 subagentes também Sonnet 5.5** (revisão independente da spec e revisão final do código) e o Claude Haiku 5.5 apenas para 2 buscas web. Números medidos a partir do log local da sessão (uso por mensagem), no momento em que esta seção foi escrita:
+
+| Item | Tokens | Custo (US$) |
+|---|---:|---:|
+| Entrada não cacheada | 394 | 0,00 |
+| Saída (inclui raciocínio) | 358.148 | 3,58 |
+| Escrita de cache, 5 min | 197.738 | 0,49 |
+| Escrita de cache, 1 h | 1.350.276 | 5,40 |
+| Leitura de cache | 47.407.492 | 4,74 |
+| **Total Sonnet 5.5** (176 chamadas ao modelo) | **49.314.048** | **14,22** |
+| Haiku 5.5 (2 buscas web) | 38.337 | ≈ 0,02 |
+| **Total** | **≈ 49,4 milhões** | **≈ US$ 14,25** |
+
+- Do total, ≈ **96% dos tokens processados foram leituras de cache** (a conversa é reenviada a cada passo e quase sempre vem do cache); os tokens efetivamente "novos" (entrada + saída + escrita de cache) somam ≈ 1,9 milhão, dos quais ≈ **358 mil de saída**.
+- A sessão principal custou ≈ US$ 13,21; os dois subagentes de revisão, ≈ US$ 1,01.
+- **Tarifas usadas** (por milhão de tokens): entrada US$ 2,00, saída US$ 10,00, leitura de cache US$ 0,10, escrita de cache de 5 min US$ 2,50 e de 1 h US$ 4,00. Essas tarifas são as que reproduzem exatamente os três checkpoints de custo que o próprio Claude Code gravou na sessão (US$ 0,58, 7,23 e 9,57). O último checkpoint registrado pelo Claude Code foi **US$ 9,60**; o total acima inclui o trabalho posterior a ele. A tabela pública de preços consultada lista a leitura de cache do Sonnet 5.5 a US$ 0,20/M; com essa tarifa o total subiria para ≈ US$ 19.
+- **Não estão incluídos:** o custo de *executar* a aplicação (chamadas à OpenAI e ao Tavily durante os testes, `evals` e demonstrações), e o tempo de desenvolvimento, que **não foi cronometrado**.
+
 ## Limitações conhecidas
 
 - Dados de clientes são sintéticos; o `user_id` não é autenticado.
