@@ -241,7 +241,7 @@ Todo o código, os testes, a documentação e as revisões foram feitos com **um
 ## Limitações conhecidas
 
 - Dados de clientes são sintéticos; o `user_id` não é autenticado.
-- A verificação de suporte e cobertura do Knowledge é uma chamada de LLM: é calibrada pelo prompt e varia entre execuções. Ela é conservadora (prefere `partial`/`insufficient_evidence` a liberar texto sem suporte); em duas rodadas seguidas dos `evals` após a revisão v2, o placar foi 13/15 e 11/15, com o `x13` corrigido nas duas e as falhas restantes em `partial` (comparação Get Clássica × Get Smart, Pix, conexão) e em uma cotação web com snippet ambíguo.
+- A verificação de suporte e cobertura do Knowledge é uma chamada de LLM: é calibrada pelo prompt e varia entre execuções. Ela é conservadora (prefere `partial`/`insufficient_evidence` a liberar texto sem suporte); em duas rodadas seguidas dos `evals` após a revisão v2, o placar foi 10/15 e 12/15, sem nenhuma resposta errada liberada (rota, ferramentas, valores e afirmações proibidas em 100%) e com o `x13` corrigido nas duas; as falhas restantes são `partial`/`insufficient_evidence` (comparação Get Clássica × Get Smart, Pix, crediário, combinado) e uma cotação web com snippet ambíguo.
 - O texto do Suporte pode sair em português mesmo com pergunta em inglês (o bloco de recebíveis é um template em português); o Conhecimento responde no idioma da pergunta.
 - O filtro que impede o LLM de afirmar "pago/confirmado" é por padrões (pt/en) e é conservador: pode trocar frases inofensivas por uma nota fixa.
 - Os itens de "Pendências" vêm do próprio modelo e podem terminar com ponto duplicado.
