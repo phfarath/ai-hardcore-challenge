@@ -1,6 +1,7 @@
 """Configuração da aplicação, lida do ambiente / `.env`. Nenhum valor secreto é logado."""
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,6 +21,12 @@ class Settings(BaseSettings):
     openai_embedding_model: str = "text-embedding-3-small"
     chroma_path: str = "chroma_data"
     timezone: str = "America/Sao_Paulo"
+
+    # produção por padrão: o emissor local de tokens só existe se o ambiente pedir explicitamente
+    app_env: Literal["development", "production"] = "production"
+    auth_audience: str = "getnet-support-api"
+    auth_issuer: str = ""
+    auth_jwks_url: str = ""
 
     max_llm_calls: int = 8
     max_tool_calls: int = 4

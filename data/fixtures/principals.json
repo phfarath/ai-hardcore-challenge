@@ -1,0 +1,26 @@
+{
+  "_comment": "Principais de desenvolvimento (T02). customers = estabelecimentos que o principal acessa, resolvidos pelo servidor; roles/scopes = o que o emissor local coloca no token.",
+  "tenant_id": "getnet",
+  "principals": {
+    "user-a": {
+      "customers": ["cliente1988"],
+      "roles": ["customer"],
+      "scopes": ["receivables:read", "terminals:read", "handoffs:create", "handoffs:read"]
+    },
+    "user-b": {
+      "customers": ["cliente2000"],
+      "roles": ["customer"],
+      "scopes": ["receivables:read", "terminals:read", "handoffs:create", "handoffs:read"]
+    },
+    "user-c": {
+      "customers": ["desconhecido"],
+      "roles": ["customer"],
+      "scopes": ["receivables:read", "terminals:read", "handoffs:create", "handoffs:read"]
+    },
+    "operator-1": {
+      "customers": [],
+      "roles": ["operator"],
+      "scopes": ["handoffs:read", "handoffs:resolve"]
+    }
+  }
+}
