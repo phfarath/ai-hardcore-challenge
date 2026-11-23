@@ -166,10 +166,25 @@ def summarize(scores: list[Score]) -> Summary:
     )
 
 
+# principal de desenvolvimento (data/fixtures/principals.json) que acessa cada cliente dos casos
+DEV_PRINCIPALS = {"cliente1988": "user-a", "cliente2000": "user-b", "desconhecido": "user-c"}
+
+
+async def _token(client: httpx.AsyncClient, customer_id: str) -> str:
+    """Token do emissor local (APP_ENV=development) para o principal dono do cliente."""
+    response = await client.post("/dev/token", json={"sub": DEV_PRINCIPALS[customer_id]})
+    response.raise_for_status()
+    token: str = response.json()["access_token"]
+    return token
+
+
 async def _ask(client: httpx.AsyncClient, case: Case) -> ChatResponse | str:
     try:
+        token = await _token(client, case.user_id)
         response = await client.post(
-            "/chat", json={"message": case.message, "user_id": case.user_id}
+            "/chat",
+            json={"message": case.message, "user_id": case.user_id},
+            headers={"Authorization": f"Bearer {token}"},
         )
     except httpx.HTTPError as exc:
         return f"request failed: {type(exc).__name__}"

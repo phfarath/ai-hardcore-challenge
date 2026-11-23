@@ -8,6 +8,9 @@ services:
         required: false
     environment:
       CHROMA_PATH: /data/chroma
+      # demo local: emissor de tokens de desenvolvimento (POST /dev/token). Em produção, use
+      # APP_ENV=production com AUTH_ISSUER e AUTH_JWKS_URL do provedor de identidade.
+      APP_ENV: ${APP_ENV:-development}
     ports:
       - "${API_PORT:-8000}:8000"  # porta do host configurável (API_PORT)
     volumes:
