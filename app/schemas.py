@@ -5,7 +5,9 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
-Workflow = Literal["knowledge", "support", "support_then_knowledge", "combined", "clarify"]
+Workflow = Literal[
+    "knowledge", "support", "support_then_knowledge", "combined", "clarify", "handoff"
+]
 Status = Literal[
     "answered",
     "partial",
@@ -82,6 +84,8 @@ class AgentResult(BaseModel):
     answer: str
     evidence: list[Evidence] = Field(default_factory=list)
     pending: list[str] = Field(default_factory=list)
+    # partes da pergunta sem evidência, segundo o verificador: o que o replanejamento observa
+    gaps: list[str] = Field(default_factory=list)
 
 
 class SourceRef(BaseModel):
@@ -106,6 +110,8 @@ class ChatResponse(BaseModel):
     # andamento separado da qualidade da resposta (T05): o turno terminou, o caso segue aberto
     run_status: Literal["completed", "awaiting_operator"] = "completed"
     handoff_id: str | None = None
+    # mudanças de plano decididas após observar resultados (T07), na ordem em que ocorreram
+    plan_changes: list[str] = Field(default_factory=list)
 
 
 class Claim(BaseModel):

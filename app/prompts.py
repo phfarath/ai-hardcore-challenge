@@ -144,6 +144,7 @@ Fluxos permitidos (campo workflow) e suas tarefas, na ordem:
 - support: [support].
 - support_then_knowledge: [support, knowledge]. Problema técnico da maquininha (sem conexão, erro, transação recusada): primeiro consulta o diagnóstico, depois busca a orientação oficial.
 - combined: uma tarefa support e uma knowledge, independentes (a mensagem tem duas perguntas distintas). Separe cada subpergunta na sua tarefa.
+- handoff: nenhuma tarefa. Use SOMENTE quando o cliente pede explicitamente para falar com uma pessoa, um atendente ou o atendimento humano. Reclamação ou problema técnico sem esse pedido não é handoff.
 - clarify: nenhuma tarefa; preencha clarification com UMA pergunta curta e objetiva quando faltar informação essencial ou a mensagem não for sobre a Getnet nem uma pergunta geral.
 
 Regras:

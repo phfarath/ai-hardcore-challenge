@@ -105,7 +105,7 @@ async def test_comparison_with_one_side_missing_is_partial_and_composed_from_ver
     result = await run_knowledge(llm, ctx_for(), tools, task(question))
     assert result.status == "partial"
     assert "A Get Clássica não cobra aluguel." in result.answer
-    assert "aluguel da Get Smart" in result.answer
+    assert result.gaps == ["aluguel da Get Smart"]  # a nota de lacuna entra na composição final
     assert "19,90" not in result.answer  # texto livre não verificado não é liberado
     assert [e.id for e in result.evidence] == [classica]
     assert smart not in [e.id for e in result.evidence]
@@ -170,7 +170,10 @@ async def test_inconsistent_answer_is_replaced_by_verified_statements(tmp_path: 
     )
     result = await run_knowledge(llm, ctx_for(), tools, task("O que é a Get Smart?"))
     assert result.status == "answered"
-    assert result.answer == "- A Get Smart tem tela touch."
+    assert result.answer == (
+        "Com base nas fontes consultadas sobre: O que é a Get Smart\n\n"
+        "- A Get Smart tem tela touch."
+    )
 
 
 @pytest.mark.parametrize("verifier_turn", [LLMTurn(), LLMTurn(content="texto sem schema")])

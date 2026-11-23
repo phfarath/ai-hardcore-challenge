@@ -139,6 +139,9 @@ async def make_deps(
     **settings_overrides: Any,
 ) -> Deps:
     """Deps de teste: fixtures reais de clientes, índice Chroma em tmp_path com 2 chunks."""
+    # replanejamento desligado por padrão: os roteiros dos testes antigos contam cada chamada;
+    # os testes da T07 o ligam explicitamente
+    settings_overrides.setdefault("max_replans", 0)
     index = KnowledgeIndex(str(tmp_path / "idx"), FakeEmbedder())
     if seed:
         for url, title, text in _SEED:

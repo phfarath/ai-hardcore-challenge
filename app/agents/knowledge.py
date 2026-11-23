@@ -13,14 +13,24 @@ NOT_FOUND_ANSWER = (
     "web), então prefiro não responder com dados não verificados."
 )
 GAP_NOTE = "Não localizei evidência suficiente nas fontes consultadas para: {gaps}."
+VERIFIED_HEADER = "Com base nas fontes consultadas sobre: {question}"
 _VERIFIER_CALLS = 1
 
 
-def _compose_verified(claims: list[Claim], gaps: list[str]) -> str:
-    """Resposta montada só com afirmações aprovadas: nenhum texto não verificado é liberado."""
-    lines = [f"- {c.statement}" for c in claims]
-    if gaps:
-        lines.append(GAP_NOTE.format(gaps="; ".join(dict.fromkeys(gaps))))
+def gap_note(gaps: list[str]) -> str:
+    """Lacunas viram nota na composição final, e não no texto do agente: uma reparação
+    posterior pode cobri-las."""
+    clean = dict.fromkeys(g.strip().rstrip(".") for g in gaps)
+    return GAP_NOTE.format(gaps="; ".join(clean))
+
+
+def _compose_verified(question: str, claims: list[Claim], header: bool = True) -> str:
+    """Resposta montada só com afirmações aprovadas: nenhum texto não verificado é liberado.
+    O cabeçalho repete o assunto da tarefa (local, produto, moeda): afirmações soltas perdem o
+    contexto que estava só no rascunho descartado. A reparação (T07) não repete o cabeçalho:
+    ela continua a resposta anterior."""
+    lines = [VERIFIED_HEADER.format(question=question.strip().rstrip("?.")), ""] if header else []
+    lines += [f"- {c.statement}" for c in claims]
     return "\n".join(lines)
 
 
@@ -31,9 +41,11 @@ async def run_knowledge(
     task: Task,
     technical_context: dict[str, str] | None = None,
     original_message: str | None = None,
+    hint: str | None = None,
 ) -> AgentResult:
     """`original_message` só no fluxo `knowledge` puro: nos compostos a mensagem traz partes de
-    outro agente, que o verificador não deve cobrar daqui."""
+    outro agente, que o verificador não deve cobrar daqui. `hint` orienta só a busca (ex.: a
+    reparação do replanejamento); o verificador julga contra `task.question`."""
     if task.source_scope == "getnet":
         tools = [t for t in tools if t.name != "web_search"]  # Getnet: só fontes oficiais
     user = task.question
@@ -41,6 +53,8 @@ async def run_knowledge(
         user += "\n\nContexto técnico do atendimento (sem dados pessoais): " + json.dumps(
             technical_context, ensure_ascii=False
         )
+    if hint:
+        user += f"\n\n{hint}"
     system = KNOWLEDGE_SYSTEM.format(today=today_label(ctx.clock.now()))
     ctx.budget.reserve_llm(_VERIFIER_CALLS)  # a verificação não pode ser engolida pelo loop
     try:
@@ -74,6 +88,7 @@ async def run_knowledge(
             answer=NOT_FOUND_ANSWER,
             evidence=[],
             pending=output.pending,
+            gaps=gaps or [task.question],
         )
     evidence: dict[str, Evidence] = {}
     for claim in supported:
@@ -82,7 +97,12 @@ async def run_knowledge(
     return AgentResult(
         agent="knowledge",
         status="partial" if gaps else "answered",
-        answer=output.answer if consistent and not gaps else _compose_verified(supported, gaps),
+        answer=(
+            output.answer
+            if consistent and not gaps
+            else _compose_verified(task.question, supported, header=hint is None)
+        ),
         evidence=list(evidence.values()),
         pending=output.pending,
+        gaps=gaps,
     )

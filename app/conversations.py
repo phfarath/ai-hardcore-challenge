@@ -205,6 +205,7 @@ async def _execute(
     pending = _pending_choice(conversation, now)
     plan: RoutePlan | None = None
     selected: str | None = None
+    replans_used = 0
     message = chat.message
     if pending is not None:
         attempted, choice = parse_choice(chat.message, pending["options"])
@@ -217,6 +218,7 @@ async def _execute(
                 return _ask_again(UNRESOLVED_CHOICE, current, pending, now, deps)
             plan = RoutePlan.model_validate(pending["plan"])
             selected = choice
+            replans_used = int(pending.get("replans_used", 0))
             message = f"{pending['question']}\n(Terminal escolhido pelo cliente: {choice})"
 
     # o caso só é aberto se o principal puder criá-lo; senão a resposta fica na recomendação
@@ -229,6 +231,7 @@ async def _execute(
         plan=plan,
         selected_terminal=selected,
         handoff_id=handoff_id,
+        replans_used=replans_used,
     )
     new_pending = None
     if outcome.terminal_options and outcome.response.status in ("needs_clarification", "partial"):
@@ -237,6 +240,7 @@ async def _execute(
             "options": outcome.terminal_options,
             "plan": outcome.plan.model_dump(mode="json"),
             "question": message,
+            "replans_used": outcome.replans_used,
             "expires_at": now + deps.settings.pending_choice_minutes * 60,
         }
     handoff = None

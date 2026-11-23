@@ -74,6 +74,9 @@ class Budget:
     def release_llm(self, calls: int) -> None:
         self.reserved_llm_calls = max(0, self.reserved_llm_calls - calls)
 
+    def remaining_llm_calls(self) -> int:
+        return self._max_llm - self.llm_calls - self.reserved_llm_calls
+
     def charge_tool(self) -> None:
         if self.tool_calls >= self._max_tool:
             raise BudgetExceeded("tool call limit reached")

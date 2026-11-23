@@ -24,7 +24,10 @@ def validate_plan(plan: RoutePlan) -> None:
         "support": ["support"],
         "support_then_knowledge": ["support", "knowledge"],
     }
-    if plan.workflow == "clarify":
+    if plan.workflow == "handoff":
+        if agents:
+            raise PlanError("handoff requires no tasks")
+    elif plan.workflow == "clarify":
         if agents or not (plan.clarification or "").strip():
             raise PlanError("clarify requires no tasks and a clarification question")
     elif plan.workflow == "combined":
