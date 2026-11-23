@@ -20,7 +20,7 @@ CMD ["python", "-m", "pytest"]
 FROM base AS api
 # usuário sem privilégios; /data/chroma criado aqui para o volume nomeado herdar o dono
 RUN useradd --system --uid 10001 --no-create-home app \
-    && mkdir -p /data/chroma \
+    && mkdir -p /data/chroma /data/state \
     && chown -R app /data
 USER app
 EXPOSE 8000
