@@ -81,7 +81,7 @@ Agentes se comunicam por **objetos Pydantic passados entre funções**. Validaç
 | `ChatResponse` | `request_id`, `status`, `answer`, `agents_used`, `sources`, `data_mode`; campos adicionais `workflow` e `tools_used` (transparência e avaliação) |
 
 `status` ∈ `answered | partial | needs_clarification | insufficient_evidence | handoff_recommended | customer_not_found`.
-"handoff_recommended" é apenas recomendação; nenhum atendimento é "aberto". Regra implementada: em `support_then_knowledge`, quando o diagnóstico mostra um problema (conectividade ou transação recusada) e o Knowledge não encontra orientação oficial, o status é `handoff_recommended` e a resposta traz o diagnóstico, a lacuna e a recomendação.
+`handoff_recommended` descreve a resposta; o caso humano real é aberto pelo turno durável (§4.10) e acompanhado por `run_status`/`handoff_id`. Regra implementada: em `support_then_knowledge`, quando o diagnóstico mostra um problema (conectividade ou transação recusada) e o Knowledge não encontra orientação oficial, o status é `handoff_recommended` e a resposta traz o diagnóstico, a lacuna e a recomendação.
 
 **Cliente sem cadastro** *(decisão do assistente)*: o acesso é autorizado antes do Router (§4.8), mas a existência do cadastro só é verificada dentro das ferramentas do Support. Um principal autorizado para um estabelecimento sem registro (ex.: mapa de acesso desatualizado; `user-c` → `desconhecido` nos dados de demo) recebe respostas públicas normalmente. Se uma tarefa exige dados do cliente e ele não existe, a ferramenta devolve `not_found`, a resposta sai com `status="customer_not_found"` (HTTP 200, pois a requisição foi processada), sem fallback. Em `combined`, o ramo público ainda é entregue e o resultado final é `partial`.
 
@@ -103,6 +103,14 @@ Agentes se comunicam por **objetos Pydantic passados entre funções**. Validaç
 - Histórico: as últimas mensagens da conversa vão ao Router como dado (nunca instrução), só para completar referências da mensagem nova.
 - Retenção configurável (`CONVERSATION_RETENTION_HOURS`, padrão 72 h; não é prazo regulatório): conversas vencidas são apagadas com mensagens e execuções a cada turno.
 - Fora do escopo desta etapa: checkpoints por passo e worker de recuperação; um turno interrompido é refeito por inteiro pela mesma chave.
+
+### 4.10 Atendimento humano: caso, operador e retomada (T05)
+- Gatilho: em `support_then_knowledge`, diagnóstico com problema e nenhuma orientação oficial. Pelo `/chat` durável, se o principal tem `handoffs:create`, o turno abre um caso interno real (`handoffs`) na mesma transação que grava a resposta: a resposta traz o id do caso, `status=handoff_recommended` (qualidade da resposta), `run_status=awaiting_operator` (andamento) e `handoff_id`. Sem o escopo, fica só a recomendação. Repetição idempotente do turno não abre um segundo caso.
+- Snapshot para o operador: pergunta, contexto técnico público (modelo, problema, código), lacuna e ids de fontes; sem valores nem identificadores de recebíveis.
+- Operador (`role=operator`, mesmo tenant): `GET /operator/handoffs` (fila, `handoffs:read`), `GET /operator/handoffs/{id}`, `POST .../claim {expected_version}` e `POST .../resolve {decision_type: reply|no_action, content, justification, expected_version}` (`handoffs:resolve`). Assumir exige estado `pending` e a versão vista; decidir exige ser o responsável, estado `assigned`, versão atual e prazo vigente (`HANDOFF_TTL_HOURS`, padrão 24 h). Conflito → 409 `handoff_conflict`; vencido → 409 `handoff_expired`; outro tenant → 404; sem papel ou escopo → 403.
+- A decisão e o evento de retomada (`resume_events`, um por caso) são gravados na mesma transação. Um worker do próprio processo consome o evento com lease, revalida que o dono da conversa ainda acessa o cliente e grava a mensagem final na conversa, o estado `completed` do caso e o evento concluído numa transação. Worker que cai após pegar o evento: a lease vence e outro ciclo entrega, uma vez só. Acesso revogado → caso `cancelled`, nada é entregue.
+- A mensagem final identifica a resposta como do atendimento humano; não altera dados da conta nem vira fato oficial. O cliente acompanha por `GET /conversations/{id}` e `GET /handoffs/{id}` (`handoffs:read`, só o próprio caso).
+- Auditoria (`audit_events`): criação, assunção, decisão e retomada, com ator, resultado e correlação (run ou evento).
 
 ### 4.2 Router
 Saída estruturada validada pelo executor: fluxo na lista permitida, ≤2 tarefas, agentes existentes, sequência coerente com o fluxo. Plano inválido → uma nova tentativa dentro do orçamento; persistindo, `clarify`/erro tratado. Extrai subperguntas em mensagens compostas.
@@ -150,6 +158,9 @@ POST /chat        Authorization: Bearer <JWT>   {"message": str, "user_id": str 
 POST /dev/token   {"sub": str, "scopes": [str] | null}   (só APP_ENV=development)
 POST /chat        + {"conversation_id": str | null}, header opcional Idempotency-Key
 GET  /conversations/{id}   mensagens e pendência da conversa (mesma autorização)
+GET  /handoffs/{id}        estado do caso para o cliente dono
+GET  /operator/handoffs[?state=]   fila do tenant (operador)
+POST /operator/handoffs/{id}/claim | /resolve   assumir e decidir (operador)
 ```
 A resposta traz `conversation_id` e `run_id`. Conflitos de estado → 409 (`conversation_busy`, `conversation_conflict`, `idempotency_key_reused`, `request_in_progress`); conversa inexistente, alheia ou expirada → 404 (§4.9).
 Payload inválido → 422 sem chamar o modelo. Token ausente/inválido → 401 `unauthorized` (com `WWW-Authenticate: Bearer`); cliente não autorizado → 403 `forbidden`; sem escopo → 403 `insufficient_scope`. Indisponibilidade total do provedor → erro HTTP distinto de `insufficient_evidence`. `user_id` seleciona o estabelecimento; **não autentica** (§4.8).

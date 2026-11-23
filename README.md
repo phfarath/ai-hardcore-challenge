@@ -177,7 +177,7 @@ Notas: o enunciado sugere o site global, mas os cenários são brasileiros, ent�
 - Validação de entrada antes de qualquer chamada ao LLM; identidade só no `RequestContext`; o repositório filtra por esse contexto e terminais de outro cliente nunca são revelados.
 - Plano do Router validado pelo código; limites por requisição configuráveis (≤2 especialistas, ≤8 chamadas LLM incluindo retry e verificação, ≤4 ferramentas, ≤1 busca web, deadline 40 s).
 - Evidências verificadas pelo servidor; sem evidência validada → `insufficient_evidence` **e o texto do LLM é descartado** (resposta fixa "não encontrei nas fontes"), para não vazar condição comercial vinda da memória do modelo.
-- Falhas de um ramo viram `partial`. `handoff_recommended` é emitido quando há **problema técnico diagnosticado e nenhuma orientação oficial** (`support_then_knowledge`): é só uma recomendação, nunca um atendimento aberto. Terminal ambíguo vira `needs_clarification`.
+- Falhas de um ramo viram `partial`. `handoff_recommended` é emitido quando há **problema técnico diagnosticado e nenhuma orientação oficial** (`support_then_knowledge`). Pelo `/chat`, o turno abre um **caso interno real** (fila, operador, decisão auditável) e devolve `handoff_id` com `run_status=awaiting_operator`; depois da decisão, um worker entrega a resposta do atendente na própria conversa, identificada como resposta humana. Terminal ambíguo vira `needs_clarification`.
 - Busca web recebe só consulta pública (sem dados do cliente); logs não contêm mensagem, resposta nem `user_id`.
 
 ## Estratégia de testes
