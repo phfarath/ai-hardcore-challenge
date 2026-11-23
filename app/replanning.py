@@ -16,6 +16,7 @@ ferramentas continuam filtradas pelos escopos do principal.
 
 from dataclasses import dataclass
 
+from app.agents.knowledge import VERIFIED_HEADER
 from app.context import RequestContext
 from app.schemas import AgentResult, Status, Task
 
@@ -79,10 +80,14 @@ def merge_repair(before: AgentResult, after: AgentResult) -> AgentResult:
         return after
     evidence = {e.id: e for e in [*before.evidence, *after.evidence]}
     status: Status = "answered" if not after.gaps else "partial"
+    # a continuação não repete o cabeçalho: o assunto já está na primeira parte
+    continuation = after.answer
+    if continuation.startswith(VERIFIED_HEADER.split("{")[0]):
+        continuation = continuation.split("\n\n", 1)[-1]
     return AgentResult(
         agent=before.agent,
         status=status,
-        answer=f"{before.answer}\n\n{after.answer}",
+        answer=f"{before.answer}\n\n{continuation}",
         evidence=list(evidence.values()),
         pending=list(dict.fromkeys([*before.pending, *after.pending])),
         gaps=after.gaps,

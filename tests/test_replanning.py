@@ -312,3 +312,51 @@ async def test_escalation_still_happens_after_a_repair_without_progress(tmp_path
     assert body["plan_changes"] == ["knowledge_repair:no_progress"]
     assert body["status"] == "handoff_recommended"
     assert body["handoff_id"] is not None
+
+
+async def test_repair_after_nothing_found_keeps_the_subject_header(tmp_path: Path) -> None:
+    """e02: a primeira tentativa não sustentou nada; a reparação é a resposta inteira e precisa
+    do assunto (o local) no cabeçalho."""
+    question = "Previsão do tempo em Porto Alegre amanhã"
+    turns = [
+        _knowledge_plan(question),
+        tool_call_turn("retrieve_getnet_knowledge", query="tempo Porto Alegre"),
+        final_turn(kout("Não encontrei.", missing(question))),
+        tool_call_turn("retrieve_getnet_knowledge", query="Porto Alegre previsão"),
+        final_turn(
+            kout(
+                "Chuva.",
+                claim(SMART_CHUNK_ID, SMART_QUOTE, statement="A fonte cita tela touch."),
+                missing("temperatura"),
+            )
+        ),
+        final_turn(verdict(True, uncovered=["temperatura"])),
+    ]
+    deps = await make_deps(tmp_path, ScriptedLLM(turns), max_replans=1)
+    response = await handle_chat(authorized(question), deps)
+    assert response.plan_changes == ["knowledge_repair"]
+    assert response.status == "partial"
+    assert response.answer.startswith("Com base nas fontes consultadas sobre: Previsão")
+    assert "Porto Alegre" in response.answer
+
+
+async def test_partial_repair_is_appended_without_a_second_header(tmp_path: Path) -> None:
+    turns = [
+        _knowledge_plan(),
+        *_first_pass_with_gap(),
+        tool_call_turn("retrieve_getnet_knowledge", query="erro ADQ 1-19"),
+        final_turn(
+            kout(
+                "Reinicie.",
+                claim(ADQ_CHUNK_ID, ADQ_QUOTE, statement="Verifique o Wi-Fi ou o chip."),
+                missing("prazo de visita técnica"),
+            )
+        ),
+        final_turn(verdict(True, uncovered=["prazo de visita técnica"])),
+    ]
+    deps = await make_deps(tmp_path, ScriptedLLM(turns), max_replans=1)
+    response = await handle_chat(authorized(QUESTION), deps)
+    assert response.status == "partial"
+    assert response.answer.count("Com base nas fontes consultadas") == 1
+    assert "tela touch" in response.answer and "Wi-Fi ou o chip" in response.answer
+    assert "prazo de visita técnica" in response.answer

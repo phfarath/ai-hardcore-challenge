@@ -24,12 +24,11 @@ def gap_note(gaps: list[str]) -> str:
     return GAP_NOTE.format(gaps="; ".join(clean))
 
 
-def _compose_verified(question: str, claims: list[Claim], header: bool = True) -> str:
+def _compose_verified(question: str, claims: list[Claim]) -> str:
     """Resposta montada só com afirmações aprovadas: nenhum texto não verificado é liberado.
     O cabeçalho repete o assunto da tarefa (local, produto, moeda): afirmações soltas perdem o
-    contexto que estava só no rascunho descartado. A reparação (T07) não repete o cabeçalho:
-    ela continua a resposta anterior."""
-    lines = [VERIFIED_HEADER.format(question=question.strip().rstrip("?.")), ""] if header else []
+    contexto que estava só no rascunho descartado."""
+    lines = [VERIFIED_HEADER.format(question=question.strip().rstrip("?.")), ""]
     lines += [f"- {c.statement}" for c in claims]
     return "\n".join(lines)
 
@@ -100,7 +99,7 @@ async def run_knowledge(
         answer=(
             output.answer
             if consistent and not gaps
-            else _compose_verified(task.question, supported, header=hint is None)
+            else _compose_verified(task.question, supported)
         ),
         evidence=list(evidence.values()),
         pending=output.pending,
