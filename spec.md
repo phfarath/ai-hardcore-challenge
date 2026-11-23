@@ -122,6 +122,15 @@ O plano do Router é o ponto de partida. Depois de cada etapa o orquestrador obs
 - A resposta traz `plan_changes` (ex.: `["knowledge_repair"]`); cada decisão gera o evento de log `replan` (decisão, resultado, contador, chamadas LLM).
 - Pedido explícito de atendimento humano ("quero falar com um atendente") é o fluxo `handoff` do Router, sem tarefas: abre o caso (motivo `customer_requested_human`) se o principal tem `handoffs:create`; senão, só orienta.
 
+### 4.12 Fronteiras e operação (T09)
+- **Consultas públicas controladas** (`app/privacy.py`): a consulta da busca web e a consulta ao índice (que vira embedding no provedor) passam por uma checagem antes de sair. Recusa se houver o seletor do cliente, ids ou valores devolvidos pelas ferramentas de dados nesta requisição, e-mail, CPF/CNPJ, valor em reais, sequência de 8+ dígitos ou id de registro (`T-…`, `R-…`). A ferramenta devolve erro ao agente (que segue sem ela) e o log registra só a categoria (`public_query_refused`).
+- **Logs com allowlist** (`app/observability.py`): só campos operacionais conhecidos saem; outros são descartados e só o nome vai em `dropped_fields`. `detail` é mascarado contra padrões de dado pessoal ou financeiro.
+- **Consumo agregado**: `request_completed` traz `llm_calls` (incluindo verificação e replanejamento), `tool_calls`, `web_searches`, `embedding_calls` e `token_usage`. Embeddings de consulta entram no orçamento (`MAX_EMBEDDING_CALLS`, padrão 6).
+- **Prazo e retry por causa**: cada chamada ao LLM usa no máximo o prazo restante (`LLM_TIMEOUT_SECONDS`, padrão 30 s); a busca web também (até 10 s). Erro transitório (conexão, timeout, 429 de taxa, 5xx) tem uma nova tentativa só se o prazo comporta a pausa e outra chamada; cota esgotada (`insufficient_quota`) é permanente e falha sem retry.
+- **Prontidão e ciclo de vida**: `GET /health` é liveness (não depende de provedores); `GET /ready` responde 200 só com índice `ready`, estado SQLite acessível e processo fora do desligamento (503 com os checks, sem chamar o LLM). No SIGTERM o uvicorn para de aceitar conexões, espera as requisições em curso (`--timeout-graceful-shutdown 20`) e o fim do lifespan sai da prontidão, para o worker de retomada e fecha os clientes HTTP dos provedores (evento `shutdown`).
+- **Saturação previsível**: até `MAX_CONCURRENT_CHATS` (padrão 8) `/chat` simultâneos por processo; acima disso, 503 `overloaded` imediato com `Retry-After: 2`, em vez de fila sem prazo.
+- **Imagem testada = imagem publicada**: o CI constrói o alvo `test` e roda a suíte dentro dele, constrói o alvo `api` com a tag do commit, roda `scripts/smoke.py` contra esse container (vivo, checks de prontidão, 401, 403 antes do Router) e prova o desligamento com `docker stop`.
+
 ### 4.2 Router
 Saída estruturada validada pelo executor: fluxo na lista permitida, ≤2 tarefas, agentes existentes, sequência coerente com o fluxo. Plano inválido → uma nova tentativa dentro do orçamento; persistindo, `clarify`/erro tratado. Extrai subperguntas em mensagens compostas.
 
@@ -165,6 +174,7 @@ Especialistas ≤2 por plano (+1 tarefa de replanejamento, §4.11); chamadas LLM
 
 ```
 POST /chat        Authorization: Bearer <JWT>   {"message": str, "user_id": str | null}
+GET  /health      liveness;  GET /ready  prontidão com checks (§4.12)
 POST /dev/token   {"sub": str, "scopes": [str] | null}   (só APP_ENV=development)
 POST /chat        + {"conversation_id": str | null}, header opcional Idempotency-Key
 GET  /conversations/{id}   mensagens e pendência da conversa (mesma autorização)
@@ -222,7 +232,7 @@ Principais de desenvolvimento (`data/fixtures/principals.json`): `user-a` → `c
 
 ## 11. Observabilidade
 
-Logs estruturados por requisição: `request_id`, agente, fluxo, `tool_name`, `duration_ms`, `status`, `source_ids`, `index_version`, `token_usage`, `error_code`. Sem mensagens completas nem dados pessoais por padrão. Dashboards, traces e alertas são descritos no README, não implementados.
+Logs estruturados por requisição, com allowlist de campos (§4.12): `request_id`, agente, fluxo, `tool_name`, `duration_ms`, `status`, `source_ids`, `index_version`, consumo agregado (`llm_calls`, `tool_calls`, `web_searches`, `embedding_calls`, `token_usage`), `error_code` e decisões de replanejamento. Campos fora da lista não saem. Dashboards, traces e alertas são descritos no README, não implementados.
 
 ## 12. Estrutura e entrega
 

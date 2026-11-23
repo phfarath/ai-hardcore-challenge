@@ -15,6 +15,8 @@ Testes padrão não usam rede nem chaves. Os que usam serviços reais têm `@pyt
 |---|---|
 | `app/main.py` | `create_app`, `/chat`, `/health`, mapeamento de erros HTTP, `build_deps` |
 | `app/orchestrator.py` | fluxos, isolamento de falhas por ramo, composição, `merge_status` |
+| `app/replanning.py` | política de replanejamento limitado (reparo de lacunas, orientação acrescentada) |
+| `app/privacy.py`, `app/observability.py` | checagem de consultas públicas; logs com allowlist |
 | `app/agents/{router,knowledge,support}.py` | os 3 agentes; prompts em `app/prompts.py` |
 | `app/llm.py` | `LLMClient`, `OpenAIClient`, `ToolSpec`, `run_agent` (loop de tool calling) |
 | `app/tools/` | ferramentas: `customer.py`, `knowledge.py`, `search.py` (Tavily) |
@@ -24,6 +26,7 @@ Testes padrão não usam rede nem chaves. Os que usam serviços reais têm `@pyt
 | `app/schemas.py`, `app/context.py` | contratos Pydantic; `RequestContext`, `Budget`, exceções |
 | `tests/fakes.py` | `ScriptedLLM`, `FakeEmbedder`, `FakeSearch`, `FrozenClock`, `make_deps` |
 | `evals/` | casos e runner de avaliação de IA (exige API e chaves) |
+| `scripts/smoke.py` | smoke contra um container no ar (usado no CI sobre a imagem construída) |
 
 ## Regras
 

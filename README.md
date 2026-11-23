@@ -100,6 +100,7 @@ Clientes sintéticos: `cliente1988` (recebíveis previstos + terminal offline co
 | 503 `index_unavailable` | índice ausente/incompatível numa pergunta que exige RAG |
 | 500 `internal_error` | erro inesperado (JSON, sem detalhes internos; o tipo do erro vai para o log) |
 | 503 `budget_exceeded` | limite de chamadas (LLM/ferramentas) esgotado **sem nenhum resultado parcial** |
+| 503 `overloaded` | mais `/chat` simultâneos do que `MAX_CONCURRENT_CHATS` no processo; resposta imediata com `Retry-After: 2` |
 | 504 `deadline_exceeded` | prazo (40 s) esgotado **sem nenhum resultado parcial** — com resultado parcial a resposta é `partial` |
 
 ### Desenvolvimento local e testes
@@ -110,6 +111,7 @@ pip install -r requirements-dev.txt
 python -m ruff check . && python -m ruff format --check . && python -m mypy app && python -m pytest   # verificação única
 python -m pytest -m live                              # verificações reais (exigem .env)
 docker compose --profile test run --rm tests          # a mesma suíte, no Docker
+python scripts/smoke.py --base-url http://localhost:8000   # smoke contra um container no ar (sem LLM)
 ```
 
 ## Arquitetura
@@ -218,7 +220,7 @@ O caso que falha é o `x13` (produto inexistente, "Getnet Quantum 9000"): o text
 
 ## Observabilidade e monitoramento em produção
 
-Implementado: logs JSON estruturados (ids de recebíveis e diagnósticos não são logados, pois embutem o número do cliente), uma linha por evento (`route`, `tool_call`, `agent_completed`, `agent_failed`, `request_completed`, `request_failed`) com `request_id`, `workflow`, `agent`, `tool_name`, `status`, `duration_ms`, `source_ids`, `index_version`, `llm_calls`, `tool_calls`, `token_usage` e `error_code`.
+Implementado: logs JSON estruturados com **allowlist de campos** (campo desconhecido é descartado; ids de recebíveis e diagnósticos não são logados, pois embutem o número do cliente), uma linha por evento (`route`, `tool_call`, `agent_completed`, `agent_failed`, `replan`, `public_query_refused`, `overloaded`, `request_completed`, `request_failed`, `shutdown`) com `request_id`, `workflow`, `agent`, `tool_name`, `status`, `duration_ms`, `source_ids`, `index_version`, consumo agregado (`llm_calls`, `tool_calls`, `web_searches`, `embedding_calls`, `token_usage`) e `error_code`. `GET /health` (liveness) e `GET /ready` (índice, estado e ciclo de vida, 503 quando não pronto). Consultas que saem para busca web ou embeddings passam por uma checagem de dados do cliente (`app/privacy.py`). O CI roda a suíte dentro da imagem e faz smoke e SIGTERM no container da API construído.
 
 Descrito (não implementado): painéis de latência p50/p95 por fluxo e por agente, taxa de `partial`/`insufficient_evidence`/`customer_not_found`, custo por requisição (tokens), taxa de 503/504; traces distribuídos (OpenTelemetry) com um span por agente/ferramenta; alertas em picos de `llm_unavailable`, queda de `index: ready`, aumento de `insufficient_evidence` (sinal de índice defasado) e do deadline; reexecução periódica dos `evals` como teste de regressão do modelo e dos prompts.
 
