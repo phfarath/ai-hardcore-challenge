@@ -382,6 +382,7 @@ async def run_chat(
             max_tool_calls=s.max_tool_calls,
             max_web_searches=s.max_web_searches,
             deadline_seconds=s.deadline_seconds,
+            max_embedding_calls=s.max_embedding_calls,
         ),
     )
     routed = plan is None
@@ -510,6 +511,8 @@ def _finish(
         index_version=deps.index.version,
         llm_calls=ctx.budget.llm_calls,
         tool_calls=ctx.budget.tool_calls,
+        web_searches=ctx.budget.web_searches,
+        embedding_calls=ctx.budget.embedding_calls,
         token_usage={
             "prompt": ctx.budget.prompt_tokens,
             "completion": ctx.budget.completion_tokens,

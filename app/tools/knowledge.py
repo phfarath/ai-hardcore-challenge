@@ -1,18 +1,30 @@
 """Ferramentas do Knowledge Agent. URLs e títulos das evidências vêm dos metadados do índice,
 nunca de texto produzido pelo LLM."""
 
+import asyncio
 import hashlib
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.context import RequestContext
+from app.context import BudgetExceeded, RequestContext
 from app.llm import ToolSpec
+from app.observability import log_event
+from app.privacy import PrivateDataInQuery, check_public_query
 from app.rag import KnowledgeIndex
 from app.schemas import Evidence, ToolResult
 from app.tools.search import SearchProvider, SearchUnavailable
 
 TOP_K = 5
+SEARCH_TIMEOUT_SECONDS = 10.0
+
+
+def _refuse(tool: str, ctx: RequestContext, exc: PrivateDataInQuery) -> ToolResult:
+    log_event("public_query_refused", request_id=ctx.request_id, tool=tool, reason=exc.reason)
+    return ToolResult(
+        status="error",
+        error="query refused: it contains customer data; send only a public query",
+    )
 
 
 class RetrieveArgs(BaseModel):
@@ -33,6 +45,13 @@ def build_knowledge_tools(
 ) -> list[ToolSpec]:
     async def retrieve_getnet_knowledge(args: RetrieveArgs, ctx: RequestContext) -> ToolResult:
         query = f"{args.topic}: {args.query}" if args.topic else args.query
+        try:
+            check_public_query(query, ctx)  # a consulta vira embedding no provedor externo
+            ctx.budget.charge_embedding()
+        except PrivateDataInQuery as exc:
+            return _refuse("retrieve_getnet_knowledge", ctx, exc)
+        except BudgetExceeded as exc:
+            return ToolResult(status="error", error=str(exc))
         hits = await index.search(query, top_k=TOP_K, market=args.market)
         if not hits:
             return ToolResult(status="empty", data={"chunks": []})
@@ -64,7 +83,15 @@ def build_knowledge_tools(
     async def web_search(args: WebSearchArgs, ctx: RequestContext) -> ToolResult:
         assert search is not None
         try:
-            results = await search.search(args.query, max_results=5)
+            check_public_query(args.query, ctx)
+        except PrivateDataInQuery as exc:
+            return _refuse("web_search", ctx, exc)
+        # o prazo restante da requisição limita a busca: ela nunca estoura o deadline
+        timeout = min(SEARCH_TIMEOUT_SECONDS, ctx.budget.remaining_seconds())
+        try:
+            results = await asyncio.wait_for(search.search(args.query, max_results=5), timeout)
+        except TimeoutError:
+            return ToolResult(status="error", error="web search unavailable: timeout")
         except SearchUnavailable as exc:
             return ToolResult(status="error", error=f"web search unavailable: {exc}")
         if not results:

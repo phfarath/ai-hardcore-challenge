@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     max_tool_calls: int = 5
     max_web_searches: int = 2
     # replanejamento (T07): uma mudança por pedido, só se sobrar orçamento para concluí-la
+    max_embedding_calls: int = 6
+    # operação (T09): requisições /chat simultâneas por processo; acima disso, 503 imediato
+    max_concurrent_chats: int = 8
+    llm_timeout_seconds: float = 30.0
     max_replans: int = 1
     replan_min_llm_calls: int = 3
     replan_min_seconds: float = 15.0
