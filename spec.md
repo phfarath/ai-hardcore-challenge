@@ -30,6 +30,8 @@ Critério de sucesso do avaliador: clonar, configurar `.env`, rodar três comand
 - Conversa e execução persistidas (SQLite), esclarecimento em dois turnos, idempotência (T04).
 - Caso interno de atendimento humano com fila, decisão de operador e retomada (T05).
 - Verificação de suporte e cobertura da pergunta antes de `answered` (T06); replanejamento limitado (T07).
+- Fronteira de privacidade das consultas externas, logs com allowlist, prontidão, desligamento e saturação previsível (T09).
+- Evidência final reproduzível: demo, drills, avaliação repetida, revisão semântica, runbook e ADRs (T10).
 
 **Não-objetivos** (ficam fora do núcleo)
 - Quarto agente conversacional, guardrails amplos de conteúdo.
@@ -228,6 +230,9 @@ Principais de desenvolvimento (`data/fixtures/principals.json`): `user-a` → `c
 - **Integração (pytest)**: API até a resposta, com LLM programado e Tavily/embeddings falsos; relógio congelado. Cobre: RAG, web, recebíveis, diagnóstico, fluxo composto, isolamento entre clientes, cliente desconhecido, tentativa de trocar usuário, recuperação vazia, timeout/falha de ramo.
 - **Verificação real separada**: ingestão, embeddings, uma recuperação, uma busca Tavily e execução via Docker.
 - **Avaliação de IA**: `evals/cases.json` com as 10 perguntas + casos de ambiguidade, composição e ausência de evidência. Por caso: rota; ferramentas obrigatórias, permitidas (qualquer outra reprova) e ordem quando material; fontes aceitáveis; status; termos a preservar; valores ligados ao seu status na mesma linha (`must_preserve_records`); valores monetários permitidos (`allowed_amounts`, qualquer outro "R$ x" reprova); âncoras semânticas (`must_mention_any`); afirmações proibidas (palavra inteira). Listas vazias = não aplicável, fora do denominador; falha de requisição conta como falha em todas as verificações aplicáveis. Cada execução grava um relatório JSON por caso com o commit em `evals/reports/`. O próprio avaliador é testado com respostas erradas (`tests/test_eval_cases.py`). Revisão manual primeiro; LLM-as-judge descrito como evolução.
+- **Variação entre rodadas**: a avaliação final roda várias vezes sobre o mesmo commit e `python -m evals.summarize` agrega a taxa por caso, os status e as mudanças de plano (T10). Uma rodada só não é tratada como o resultado.
+- **Revisão semântica** (T10): as respostas da rodada final são lidas caso a caso, separando o que a pontuação objetiva aprova do que de fato responde à pergunta (`docs/evidence/semantic-review.md`).
+- **Operação**: `scripts/smoke.py` (CI, sobre a imagem construída), `scripts/demo.py` (cenários contra a API real, com reinício) e `scripts/drills.py` (saturação, provedor fora, índice ausente, SIGTERM com pedido em curso).
 - **Regressões dos achados** (`tests/test_regressions.py`): prosa financeira contraditória, recusa com contexto de conectividade (e08) e evidência genérica tratada como suficiente (x13); registradas como `xfail(strict=True)` antes das correções e liberadas por T03/T06.
 
 ## 11. Observabilidade

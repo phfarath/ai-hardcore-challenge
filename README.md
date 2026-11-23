@@ -4,28 +4,32 @@ Serviço HTTP em que **três agentes cooperam** para responder mensagens de clie
 
 | Agente | Papel |
 |---|---|
-| **Router** | Lê a mensagem e escolhe um fluxo permitido (`knowledge`, `support`, `support_then_knowledge`, `combined`, `clarify`). |
+| **Router** | Lê a mensagem (com o histórico da conversa como dado) e escolhe um fluxo permitido (`knowledge`, `support`, `support_then_knowledge`, `combined`, `clarify`, `handoff`). |
 | **Knowledge** | Responde perguntas públicas com **RAG** sobre páginas oficiais da Getnet (Chroma) e **busca web** (Tavily) para perguntas gerais (clima, câmbio). |
 | **Customer Support** | Consulta dados **individuais** do cliente com duas ferramentas: `get_receivables` e `get_terminal_diagnostics`. |
 
 Ideia central: **o LLM interpreta e escolhe ferramentas; o código controla identidade, sequência de execução, evidências e limites.** Cada resposta carrega as fontes que a sustentam, e os valores financeiros vêm da ferramenta, não da geração.
 
-**Link da demo:** https://youtu.be/ro0qdh9WJQE
-- 182 testes passando;
-- 14 de 15 casos de avaliação passando;
-- o único caso que falha está documentado como limitação conhecida.
+Em volta dos agentes: **identidade por JWT** com autorização por recurso, **conversa durável** (SQLite) com escolha em dois turnos e idempotência, **verificação** de cada afirmação antes de `answered`, **replanejamento limitado** depois de observar resultados, **caso humano real** com fila de operador e retomada na conversa, e **operação** de uma instância (prontidão, desligamento, saturação, privacidade das consultas externas).
 
-> A especificação de comportamento (critérios de aceite, contratos, falhas) está em [`spec.md`](spec.md); o plano de implementação em `docs/superpowers/plans/`.
+**Link da demo (v1):** https://youtu.be/ro0qdh9WJQE
+
+> **Revisão v2.** Esta versão responde ao feedback da v1 (7,9/10). A matriz **crítica → implementação → teste → evidência** está em [`docs/evidence/README.md`](docs/evidence/README.md); decisões em [`docs/adr/`](docs/adr/); operação em [`docs/runbook.md`](docs/runbook.md); roteiro de demonstração em [`docs/demo.md`](docs/demo.md). A especificação de comportamento está em [`spec.md`](spec.md).
 
 ## Estado da verificação
 
-| Verificado | Como |
-|---|---|
-| Lógica dos agentes, orquestração, API, identidade, falhas, RAG e ingestão | 182 testes (`pytest`), rodando também dentro do Docker; inclui o `chat.completions.parse` **real** do SDK da OpenAI (só a rede é simulada) com todas as ferramentas em modo estrito |
-| Fluxo Docker ponta a ponta, com serviços reais | `docker compose build` → `run --rm api python -m app.ingest` (**25 páginas, 41 chunks, 0 falhas**) → `up`; `/health` com `index: ready`; perguntas de recebíveis, Pix e produto inexistente respondidas |
-| Serviços reais (OpenAI `gpt-6-luna` com `OPENAI_REASONING_EFFORT=none`, embeddings, Tavily) | `pytest -m live`: **7/7** (cada pergunta de RAG recupera a página esperada; Tavily responde). `evals`: **14/15** contra a API do Docker (veja [Avaliação](#avaliação-de-ia)) |
+Evidência final no commit `6b7df82` ([manifesto](docs/evidence/release-manifest.json)), em 23/11/2026:
 
-Verificação feita em 10/11/2026. Os testes padrão não usam rede nem chaves; as verificações com serviços reais ficam marcadas `@pytest.mark.live`.
+| Verificado | Resultado |
+|---|---|
+| Suíte offline (`pytest`, sem rede nem chaves), no host e dentro da imagem `test` | **310 passed**; ruff, format e mypy limpos |
+| Smoke na imagem da API construída (CI e local) | OK: `/health`, `/ready` com checks, 401 sem token, 403 antes do Router; `docker stop` registra o fechamento dos clientes |
+| Demo ponta a ponta contra a API real, com reinício do container no meio da conversa (`scripts/demo.py --restart`) | **21/21 passos** ([saída](docs/evidence/demo.txt)) |
+| Avaliação real (`gpt-6-luna`, 16 casos), **3 rodadas no mesmo commit** | **12/16, 14/16, 14/16**, 0 erros; rota, ferramentas, valores e afirmações proibidas em 100% nas três ([agregado](docs/evidence/eval-summary.json)) |
+| Revisão semântica das 48 respostas | nenhuma afirmação sem fonte; 5 defeitos registrados ([revisão](docs/evidence/semantic-review.md)) |
+| Falhas provocadas (`scripts/drills.py`) | saturação → 503 imediato; chave inválida → 503 em 0,5 s sem retry; índice ausente → `/ready` 503; SIGTERM com pedido em curso → o pedido termina ([drills](docs/evidence/drills.json)) |
+
+As verificações com serviços reais ficam marcadas `@pytest.mark.live` e exigem `.env`.
 
 ## Como executar
 
@@ -79,7 +83,12 @@ curl -s localhost:8000/chat -H 'content-type: application/json' -H "Authorizatio
   "sources": [{"id": "R-1988-001", "type": "customer_record", "title": "Recebível R-1988-001", "url": null}],
   "data_mode": "demo",             // "demo" quando dados sintéticos de cliente foram usados
   "workflow": "support",           // campos extras, úteis para depuração e avaliação
-  "tools_used": ["get_receivables"]
+  "tools_used": ["get_receivables"],
+  "conversation_id": "conv_…",     // envie de volta para continuar a conversa (T04)
+  "run_id": "run_…",
+  "run_status": "completed",       // "awaiting_operator" quando um caso humano foi aberto (T05)
+  "handoff_id": null,
+  "plan_changes": []               // ex.: ["knowledge_repair"], ["guidance_added"] (T07)
 }
 ```
 
@@ -118,23 +127,28 @@ python scripts/smoke.py --base-url http://localhost:8000   # smoke contra um con
 
 ```mermaid
 flowchart TD
-    A["POST /chat"] --> B["Validação (Pydantic) + RequestContext"]
-    B --> R["Router Agent (plano estruturado)"]
+    A["POST /chat + Bearer JWT"] --> P["Principal (token) + autorização do seletor"]
+    P --> ST["Turno durável (SQLite): lease, idempotência, pendência"]
+    ST -->|"escolha pendente ('o segundo')"| PL["Plano salvo (sem Router)"]
+    ST --> R["Router Agent (plano estruturado)"]
     R --> V["validate_plan (fluxos permitidos)"]
-    V -->|knowledge| K["Knowledge Agent"]
-    V -->|support| S["Customer Support Agent"]
-    V -->|support_then_knowledge| S
+    PL --> O
+    V --> O["Orquestrador: executa, observa, replaneja 1x"]
+    O -->|knowledge| K["Knowledge Agent"]
+    O -->|support| S["Customer Support Agent"]
     S -->|"contexto técnico mínimo"| K
-    V -->|combined| S
-    V -->|combined| K
-    V -->|clarify| Q["Pedido de esclarecimento"]
+    K --> VER["Verificação: proveniência + suporte/cobertura"]
+    VER -->|"lacunas"| O
+    S -->|"código de erro"| O
     K --> D["RAG (Chroma)"]
     K --> W["Busca web (Tavily)"]
+    D -.->|"consulta conferida (privacy)"| K
     S --> T["get_receivables / get_terminal_diagnostics"]
-    S --> C["Composição determinística + status"]
-    K --> C
-    Q --> C
-    C --> J["JSON: resposta, status, fontes"]
+    O --> C["Composição determinística + status"]
+    V -->|"handoff / clarify"| C
+    C --> ST2["Grava resposta + caso humano (mesma transação)"]
+    ST2 --> J["JSON: resposta, status, fontes, plan_changes, handoff_id"]
+    ST2 -.-> H["Fila do operador → decisão → worker de retomada → mensagem na conversa"]
 ```
 
 ### Fluxo de mensagens
@@ -144,7 +158,9 @@ flowchart TD
 3. O orquestrador executa o fluxo **em sequência**. Agentes não se chamam: o código passa objetos tipados.
    - `support_then_knowledge`: o Support consulta o diagnóstico; só `terminal_model`, `error_code` e `issue` seguem ao Knowledge (nunca ids, valores ou identidade).
    - `combined`: duas subperguntas independentes; cada ramo é isolado — se um falha, a parte válida sai com `status="partial"` e uma nota de pendência.
-4. A composição é determinística (seções por especialista). O status final segue regras explícitas (`merge_status`).
+4. Depois de cada etapa o orquestrador **observa** o resultado e pode mudar o plano uma vez (`app/replanning.py`): reparar as lacunas que o verificador apontou ou acrescentar a orientação oficial para um código de erro visto no diagnóstico. As mudanças saem em `plan_changes`.
+5. A composição é determinística (seções por especialista). O status final segue regras explícitas (`merge_status`).
+6. O turno é gravado no SQLite com a resposta, a pendência (ex.: lista de terminais apresentada) e, se o fluxo escalou, o caso humano, tudo na mesma transação. O próximo turno da conversa usa esse estado; o operador decide pela API e um worker entrega a resposta humana na conversa.
 
 ### Como as ferramentas (tool calling) são usadas
 
@@ -187,36 +203,42 @@ Notas: o enunciado sugere o site global, mas os cenários são brasileiros, ent�
 
 Pirâmide pensada para um sistema multiagente, onde o LLM é a parte não determinística:
 
-1. **Integração da API até a resposta**, com um LLM *roteirizado* (`ScriptedLLM`) e fakes de embeddings/busca/relógio. Verifica contratos, roteamento, ferramentas, isolamento entre clientes, fluxo composto, falhas e limites **sem custo e sem flakiness**. Cada critério de aceite da spec tem um teste (`tests/test_api.py`, `tests/test_orchestrator.py`).
+1. **Integração da API até a resposta**, com um LLM *roteirizado* (`ScriptedLLM`) e fakes de embeddings/busca/relógio. Verifica contratos, roteamento, ferramentas, isolamento entre clientes, fluxo composto, falhas e limites **sem custo e sem flakiness**. Cada critério de aceite da spec tem um teste (`tests/test_api.py`, `tests/test_orchestrator.py`), e cada item da revisão v2 tem o seu arquivo: `test_auth.py`, `test_conversations.py`, `test_handoffs.py`, `test_verification.py`, `test_replanning.py`, `test_operations.py` (este com canários de privacidade num fluxo completo).
 2. **Unidade das peças determinísticas**: chunking, índice, ferramentas, validação de plano, template de recebíveis, cliente OpenAI (com stub).
 3. **Verificações reais separadas** (`-m live`, exigem `.env`): ingestão, embeddings, recuperação, Tavily.
 4. **Avaliação de IA** (abaixo) para o que testes determinísticos não alcançam: qualidade de roteamento e de resposta com o modelo real.
 
-Para ampliar a integração: gravar/reproduzir respostas reais do provedor (VCR) para regressão barata, e testes de carga para validar os limites de orçamento e deadline sob concorrência (já há um teste de concorrência com usuários distintos).
+5. **Imagem e operação**: o CI roda a suíte dentro da imagem, faz smoke (`scripts/smoke.py`) e SIGTERM no container da API; `scripts/demo.py` percorre os cenários contra a API real (com reinício no meio) e `scripts/drills.py` provoca saturação, provedor fora, índice ausente e SIGTERM com pedido em curso.
+
+Para ampliar: gravar/reproduzir respostas reais do provedor (VCR) para regressão barata e carga com volume real para calibrar os limites.
 
 ## Avaliação de IA
 
-`evals/cases.json` traz **15 casos**: as 10 mensagens do enunciado + composta, terminal ambíguo, produto inexistente (sem evidência), cliente desconhecido e tentativa de troca de usuário. Cada caso define rota, ferramentas obrigatórias e permitidas (qualquer outra reprova), fontes aceitáveis, status, valores ligados ao seu status, valores monetários permitidos, âncoras semânticas e afirmações proibidas; listas vazias ficam fora do denominador e erros de requisição contam como falha. Cada execução grava um relatório JSON por caso em `evals/reports/`.
+`evals/cases.json` traz **16 casos**: as 10 mensagens do enunciado + composta, terminal ambíguo, produto inexistente (sem evidência), cliente desconhecido, tentativa de troca de usuário e pedido explícito de atendente. Cada caso define rota, ferramentas obrigatórias e permitidas (qualquer outra reprova), fontes aceitáveis, status, valores ligados ao seu status, valores monetários permitidos, âncoras semânticas e afirmações proibidas; listas vazias ficam fora do denominador e erros de requisição contam como falha. Cada execução grava um relatório JSON por caso em `evals/reports/`.
 
 ```bash
 docker compose up -d
 python -m evals.run_evals            # imprime PASS/FAIL por caso e as métricas
 ```
 
-Métricas: acerto de rota, de ferramentas, de fontes esperadas, de status, preservação de valores e ausência de afirmações proibidas. A pontuação detecta regressões objetivas; a **qualidade semântica** das respostas continua exigindo revisão manual (evolução natural: LLM-as-judge com rubrica). 
+Métricas: acerto de rota, de ferramentas, de fontes esperadas, de status, preservação de valores e ausência de afirmações proibidas. A pontuação detecta regressões objetivas; a **qualidade semântica** é revisada à parte (abaixo). Evolução natural: um avaliador semântico independente com rubrica calibrada.
 
-**Resultado mais recente (10/11/2026, API no Docker, `gpt-6-luna`): 14/15 casos.**
+**Resultado final (23/11/2026, commit `6b7df82`, API no Docker, `gpt-6-luna`), 3 rodadas:**
 
-| Métrica | Acertos |
-|---|---|
-| rota | 15/15 |
-| ferramentas | 15/15 |
-| fontes esperadas | 6/6 |
-| status | 13/14 |
-| preservação de valores | 15/15 |
-| afirmações proibidas ausentes | 15/15 |
+| Métrica | Rodada 1 | Rodada 2 | Rodada 3 |
+|---|---|---|---|
+| casos | 12/16 | 14/16 | 14/16 |
+| rota | 16/16 | 16/16 | 16/16 |
+| ferramentas | 16/16 | 16/16 | 16/16 |
+| fontes esperadas | 6/6 | 6/6 | 6/6 |
+| status | 11/15 | 13/15 | 13/15 |
+| valores, valores permitidos e afirmações proibidas | 100% | 100% | 100% |
 
-O caso que falha é o `x13` (produto inexistente, "Getnet Quantum 9000"): o texto diz corretamente que **não encontrou** a taxa, mas o status sai `answered` em vez de `insufficient_evidence`, porque o modelo cita trechos genéricos (que mencionam que as taxas variam) como evidência. É um limite conhecido: o status depende de o modelo não citar evidência quando conclui que não achou, e isso não é imposto em código. Nota: na primeira rodada o `e04` (Pix) também falhou, mas era uma lacuna do dataset — a resposta citava a FAQ oficial (`/duvidas/`), que faltava na lista de fontes esperadas; a lista foi corrigida depois de conferir a fonte citada.
+Estáveis em 3/3: recebíveis, clima, antecipação, crediário, Link de Pagamento, terminal ambíguo, **x13 (produto inexistente → `insufficient_evidence`)**, cliente sem cadastro, troca de identidade e pedido de atendente. Variam entre `partial` e `answered`: e01 e x11 (comparação de máquinas, que as páginas não fazem), e04 (Pix), e05 (conexão) e e07 (câmbio, que depende do snippet da busca). A causa é o verificador semântico, que julga a cobertura de forma diferente a cada rodada; o erro é sempre para o lado conservador. `python -m evals.summarize <relatórios>` agrega várias rodadas.
+
+A pontuação não mede tudo: a [revisão semântica](docs/evidence/semantic-review.md) encontrou, por exemplo, uma fonte de médias mensais aceita como previsão de "amanhã" (e02, PASS nas três rodadas) e idiomas misturados em respostas reparadas.
+
+Histórico: na v1 o placar foi 14/15 com o x13 falhando (evidência genérica tratada como suficiente); o caso `x16` (pedido de atendente) entrou na v2.
 
 ## Observabilidade e monitoramento em produção
 
@@ -232,6 +254,8 @@ Descrito (não implementado): painéis de latência p50/p95 por fluxo e por agen
 - **Dados reais de clientes**: implementar `CustomerRepository` (`app/repositories.py`) e injetar em `build_deps` (`app/main.py`).
 
 ## Custo de desenvolvimento (tokens e dinheiro)
+
+> Os números abaixo são da **v1** (entrega avaliada com 7,9). A revisão v2 (T01–T10) foi feita em outras sessões e **não teve o custo medido**.
 
 Todo o código, os testes, a documentação e as revisões foram feitos com **uma única sessão do Claude Code usando Claude Sonnet 5.5** (`claude-sonnet-5-5`), mais **2 subagentes também Sonnet 5.5** (revisão independente da spec e revisão final do código) e o Claude Haiku 5.5 apenas para 2 buscas web. Números medidos a partir do log local da sessão (uso por mensagem), no momento em que esta seção foi escrita:
 
@@ -253,10 +277,17 @@ Todo o código, os testes, a documentação e as revisões foram feitos com **um
 
 ## Limitações conhecidas
 
-- Dados de clientes são sintéticos. O mapa de acesso (principal → estabelecimentos) é uma fixture; em produção seria outra implementação de `AccessRepository` ligada ao cadastro real.
-- A verificação de suporte e cobertura do Knowledge é uma chamada de LLM: é calibrada pelo prompt e varia entre execuções. Ela é conservadora (prefere `partial`/`insufficient_evidence` a liberar texto sem suporte); em duas rodadas seguidas dos `evals` após a revisão v2, o placar foi 10/15 e 12/15, sem nenhuma resposta errada liberada (rota, ferramentas, valores e afirmações proibidas em 100%) e com o `x13` corrigido nas duas; as falhas restantes são `partial`/`insufficient_evidence` (comparação Get Clássica × Get Smart, Pix, crediário, combinado) e uma cotação web com snippet ambíguo.
-- O texto do Suporte pode sair em português mesmo com pergunta em inglês (o bloco de recebíveis é um template em português); o Conhecimento responde no idioma da pergunta.
-- O filtro que impede o LLM de afirmar "pago/confirmado" é por padrões (pt/en) e é conservador: pode trocar frases inofensivas por uma nota fixa.
-- Os itens de "Pendências" vêm do próprio modelo e podem terminar com ponto duplicado.
-- Páginas de produto renderizadas por JavaScript não são extraídas (sem navegador headless).
-- Valores de limites (deadline, orçamentos, `top_k`, tamanho de chunk) são pontos de partida de engenharia, não medidos.
+O que **não** foi entregue ou tem limite conhecido (cada item foi observado, não suposto):
+
+- **Recuperação não medida formalmente** (gap 7 do feedback): não há Recall@K, MRR nem ablações; o índice é o mesmo da v1 (25 páginas, 41 chunks).
+- **Avaliação semântica não independente**: a revisão das 48 respostas foi feita pelo agente que implementou; não há juiz calibrado com humanos.
+- **Variação do verificador**: a nota oscila entre 12 e 14 de 16 no mesmo commit, sempre para `partial`/`insufficient_evidence`, nunca liberando texto sem fonte.
+- **Defeitos registrados na revisão semântica**: a fonte não é checada quanto à data (D1); idiomas se misturam em respostas reparadas e nas notas de lacuna (D2); as seções de Suporte e Conhecimento não reconciliam o texto livre (D3); a junção do reparo pode manter um dado datado mais antigo (D4); as pendências do modelo repetem a nota de lacuna (D5).
+- **Recusa 51 sem caso humano**: quando o Conhecimento sai `partial` (define "venda negada", mas sem orientação para o código), o caso não é aberto.
+- **Uma instância**: SQLite, worker de retomada e limite de simultaneidade são por processo. Várias instâncias exigem trocar o `StateStore` e a fila (ADRs 0002 e 0003).
+- **Sem tela de operador**: o ciclo humano é exercido pela API e por `scripts/demo.py`.
+- **Observabilidade**: logs JSON com allowlist e `request_id`; sem traces distribuídos, painéis ou alertas (descritos acima, não implementados).
+- **Privacidade por padrões**: a checagem das consultas externas cobre os valores vistos no pedido e padrões conhecidos; formatos novos de dado pessoal exigem atualizá-los.
+- **Dados sintéticos**: clientes e o mapa principal → estabelecimentos são fixtures; produção exige o cadastro real atrás de `CustomerRepository` e `AccessRepository`.
+- **Limites não calibrados**: deadline, orçamentos, simultaneidade, `top_k` e tamanho de chunk são pontos de partida; a carga medida foi de 6 pedidos simultâneos.
+- O filtro que impede o LLM de afirmar "pago/confirmado" é por padrões (pt/en) e conservador. Páginas renderizadas por JavaScript não são extraídas.
