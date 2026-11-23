@@ -18,6 +18,7 @@ from app.schemas import AgentOutput, Task, ToolResult
 from app.tools.customer import build_customer_tools
 from app.tools.knowledge import build_knowledge_tools
 from tests.fakes import (
+    CUSTOMER_SCOPES,
     FakeEmbedder,
     FrozenClock,
     ScriptedLLM,
@@ -33,7 +34,13 @@ FAQ_URL = "https://site.getnet.com.br/duvidas/"
 
 
 def ctx_for(user_id: str = "cliente1988") -> RequestContext:
-    return RequestContext(request_id="r", user_id=user_id, clock=FrozenClock(), budget=Budget())
+    return RequestContext(
+        request_id="r",
+        user_id=user_id,
+        clock=FrozenClock(),
+        budget=Budget(),
+        scopes=CUSTOMER_SCOPES,
+    )
 
 
 async def test_free_text_cannot_contradict_receivables_amounts() -> None:

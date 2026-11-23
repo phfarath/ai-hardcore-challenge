@@ -15,6 +15,7 @@ from app.tools.search import SearchUnavailable
 from tests.fakes import (
     ADQ_CHUNK_ID,
     ADQ_QUOTE,
+    DEV_SUB,
     SMART_CHUNK_ID,
     SMART_QUOTE,
     FakeSearch,
@@ -45,10 +46,19 @@ def support_turns(text: str = "Explicação.") -> list[LLMTurn]:
     return [tool_call_turn("get_receivables", sales_date=YESTERDAY), final_turn(out(text))]
 
 
+def bearer(deps: Deps, user_id: str = "cliente1988") -> dict[str, str]:
+    assert deps.dev_issuer is not None
+    return {"Authorization": f"Bearer {deps.dev_issuer.issue(DEV_SUB[user_id])}"}
+
+
 async def post(deps: Deps, message: str, user_id: str = "cliente1988") -> httpx.Response:
     transport = httpx.ASGITransport(app=create_app(deps))
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        return await client.post("/chat", json={"message": message, "user_id": user_id})
+        return await client.post(
+            "/chat",
+            json={"message": message, "user_id": user_id},
+            headers=bearer(deps, user_id),
+        )
 
 
 async def test_accept_receivables_yesterday_cliente1988(tmp_path: Path) -> None:  # critério 1
@@ -105,7 +115,11 @@ async def test_accept_isolation_1988_vs_2000_and_unknown(tmp_path: Path) -> None
             await post(await make_deps(tmp_path / user_id, llm), "vendas de ontem?", user_id)
         ).json()
 
-    first, second, unknown = await ask("cliente1988"), await ask("cliente2000"), await ask("zzz")
+    first, second, unknown = (
+        await ask("cliente1988"),
+        await ask("cliente2000"),
+        await ask("desconhecido"),
+    )
     assert "1.250,00" in first["answer"] and "3.200,00" not in first["answer"]
     assert "3.200,00" in second["answer"] and "1.250,00" not in second["answer"]
     assert "bloqueado" in second["answer"]
@@ -122,7 +136,9 @@ async def test_accept_unknown_user_public_question_still_answers(tmp_path: Path)
             final_turn(verdict(True)),
         ]
     )
-    body = (await post(await make_deps(tmp_path, llm), "O que é a Get Smart?", "zzz")).json()
+    body = (
+        await post(await make_deps(tmp_path, llm), "O que é a Get Smart?", "desconhecido")
+    ).json()
     assert body["status"] == "answered"
 
 
@@ -197,7 +213,7 @@ async def test_accept_forged_evidence_ids_are_dropped(tmp_path: Path) -> None:  
         {"message": "oi", "user_id": ""},
         {"message": "oi", "user_id": "../x"},
         {"message": "oi", "user_id": "a" * 500},
-        {"message": "oi"},
+        {"message": "oi", "user_id": 1988},
         {"user_id": "cliente1988"},
         {"message": 123, "user_id": "cliente1988"},
     ],
@@ -206,9 +222,10 @@ async def test_accept_invalid_payload_returns_422_without_llm_call(
     tmp_path: Path, payload: dict[str, Any]
 ) -> None:  # critério 8 + Review Focus 1
     llm = ScriptedLLM([])
-    transport = httpx.ASGITransport(app=create_app(await make_deps(tmp_path, llm)))
+    deps = await make_deps(tmp_path, llm)
+    transport = httpx.ASGITransport(app=create_app(deps))
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post("/chat", json=payload)
+        response = await client.post("/chat", json=payload, headers=bearer(deps))
     assert response.status_code == 422
     assert llm.calls == []
 
@@ -294,7 +311,9 @@ async def test_unexpected_error_returns_json_internal_error(tmp_path: Path) -> N
     deps = await make_deps(tmp_path, ReactiveLLM(fail=RuntimeError("boom")))
     transport = httpx.ASGITransport(app=create_app(deps), raise_app_exceptions=False)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post("/chat", json={"message": "oi", "user_id": "cliente1988"})
+        response = await client.post(
+            "/chat", json={"message": "oi", "user_id": "cliente1988"}, headers=bearer(deps)
+        )
     assert response.status_code == 500
     assert response.json() == {"error": "internal_error"}
 
@@ -319,7 +338,9 @@ async def test_inner_timeout_error_is_not_reported_as_deadline(tmp_path: Path) -
     deps = await make_deps(tmp_path, ReactiveLLM(fail=TimeoutError("inner")))
     transport = httpx.ASGITransport(app=create_app(deps), raise_app_exceptions=False)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post("/chat", json={"message": "oi", "user_id": "cliente1988"})
+        response = await client.post(
+            "/chat", json={"message": "oi", "user_id": "cliente1988"}, headers=bearer(deps)
+        )
     assert response.status_code == 500
     assert response.json() == {"error": "internal_error"}
 
@@ -347,8 +368,12 @@ async def test_json_responses_declare_utf8_charset(tmp_path: Path) -> None:
     deps = await make_deps(tmp_path, llm)
     transport = httpx.ASGITransport(app=create_app(deps))
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        ok = await client.post("/chat", json={"message": "vendas?", "user_id": "cliente1988"})
-        invalid = await client.post("/chat", json={"message": "", "user_id": "cliente1988"})
+        ok = await client.post(
+            "/chat", json={"message": "vendas?", "user_id": "cliente1988"}, headers=bearer(deps)
+        )
+        invalid = await client.post(
+            "/chat", json={"message": "", "user_id": "cliente1988"}, headers=bearer(deps)
+        )
         health = await client.get("/health")
     for response in (ok, invalid, health):
         assert response.headers["content-type"] == "application/json; charset=utf-8"

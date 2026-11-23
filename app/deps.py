@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from app.auth import Authenticator, DevIssuer
 from app.config import Settings
 from app.context import Clock
 from app.llm import LLMClient
@@ -18,3 +19,5 @@ class Deps:
     search: SearchProvider | None
     clock: Clock
     settings: Settings
+    auth: Authenticator
+    dev_issuer: DevIssuer | None = None

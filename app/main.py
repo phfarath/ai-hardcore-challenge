@@ -1,13 +1,17 @@
-"""API HTTP: POST /chat e GET /health."""
+"""API HTTP: POST /chat (autenticado), GET /health e, só em desenvolvimento, POST /dev/token."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Annotated
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel, ConfigDict
 
+from app.auth import AuthenticationError, Principal, build_auth
 from app.config import DATA_DIR, Settings
 from app.context import (
     BudgetExceeded,
@@ -21,6 +25,13 @@ from app.deps import Deps
 from app.llm import OpenAIClient
 from app.observability import configure_logging, log_event
 from app.orchestrator import handle_chat
+from app.policies import (
+    CustomerSelectionRequired,
+    Forbidden,
+    InsufficientScope,
+    ResourceNotFound,
+    authorize_chat,
+)
 from app.rag import KnowledgeIndex, OpenAIEmbedder
 from app.repositories import JsonCustomerRepository
 from app.schemas import ChatRequest, ChatResponse
@@ -47,6 +58,7 @@ def build_deps(settings: Settings | None = None) -> Deps:
         raise RuntimeError("OPENAI_CHAT_MODEL is not set (see .env.example)")
     tavily_key = settings.tavily_api_key.get_secret_value()
     embedder = OpenAIEmbedder(openai_key, settings.openai_embedding_model)
+    auth, dev_issuer = build_auth(settings)
     return Deps(
         llm=OpenAIClient(
             openai_key,
@@ -58,7 +70,15 @@ def build_deps(settings: Settings | None = None) -> Deps:
         search=TavilySearch(tavily_key) if tavily_key else None,
         clock=SystemClock(settings.timezone),
         settings=settings,
+        auth=auth,
+        dev_issuer=dev_issuer,
     )
+
+
+class DevTokenRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sub: str
+    scopes: list[str] | None = None
 
 
 def create_app(deps: Deps | None = None) -> FastAPI:
@@ -83,6 +103,31 @@ def create_app(deps: Deps | None = None) -> FastAPI:
     async def _invalid_payload(_: Request, exc: RequestValidationError) -> JSONResponse:
         # mesmo corpo do handler padrão do FastAPI, mas com charset declarado
         return Utf8JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
+
+    @app.exception_handler(AuthenticationError)
+    async def _unauthenticated(_: Request, exc: AuthenticationError) -> JSONResponse:
+        log_event("auth_failed", error_code="AuthenticationError", detail=str(exc))
+        response = error(401, "unauthorized")
+        response.headers["WWW-Authenticate"] = "Bearer"
+        return response
+
+    @app.exception_handler(InsufficientScope)
+    async def _scope(_: Request, exc: InsufficientScope) -> JSONResponse:
+        log_event("access_denied", error_code="InsufficientScope", detail=str(exc))
+        return error(403, "insufficient_scope")
+
+    @app.exception_handler(Forbidden)
+    async def _forbidden(_: Request, exc: Forbidden) -> JSONResponse:
+        log_event("access_denied", error_code="Forbidden", detail=str(exc))
+        return error(403, "forbidden")
+
+    @app.exception_handler(ResourceNotFound)
+    async def _not_found(_: Request, __: ResourceNotFound) -> JSONResponse:
+        return error(404, "not_found")
+
+    @app.exception_handler(CustomerSelectionRequired)
+    async def _selection(_: Request, __: CustomerSelectionRequired) -> JSONResponse:
+        return error(400, "customer_selection_required")
 
     @app.exception_handler(ProviderUnavailable)
     async def _llm_down(_: Request, exc: ProviderUnavailable) -> JSONResponse:
@@ -112,9 +157,32 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         log_event("request_failed", error_code=type(exc).__name__)
         return error(500, "internal_error")
 
+    bearer = HTTPBearer(auto_error=False)
+
+    async def current_principal(
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+    ) -> Principal:
+        if credentials is None:
+            raise AuthenticationError("missing bearer token")
+        principal: Principal = await app.state.deps.auth.authenticate(credentials.credentials)
+        return principal
+
     @app.post("/chat", response_model=ChatResponse)
-    async def chat(req: ChatRequest) -> ChatResponse:
-        return await handle_chat(req, app.state.deps)
+    async def chat(
+        req: ChatRequest, principal: Annotated[Principal, Depends(current_principal)]
+    ) -> ChatResponse:
+        # autorização antes do Router: recusa aqui não gasta nenhuma chamada ao LLM
+        authorized = authorize_chat(principal, req.message, req.user_id)
+        return await handle_chat(authorized, app.state.deps)
+
+    @app.post("/dev/token")
+    async def dev_token(req: DevTokenRequest) -> dict[str, str]:
+        """Só em APP_ENV=development: emite token do emissor local para um principal de
+        desenvolvimento. Em produção a rota responde 404 e o emissor nem existe."""
+        issuer = app.state.deps.dev_issuer
+        if issuer is None or req.sub not in issuer.profiles:
+            raise ResourceNotFound("dev issuer disabled or unknown principal")
+        return {"access_token": issuer.issue(req.sub, scopes=req.scopes), "token_type": "Bearer"}
 
     @app.get("/health")
     async def health() -> dict[str, str]:

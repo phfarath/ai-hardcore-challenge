@@ -24,9 +24,9 @@ from app.context import (
 from app.deps import Deps
 from app.llm import ToolSpec
 from app.observability import log_event
+from app.policies import AuthorizedChat, InsufficientScope
 from app.schemas import (
     AgentResult,
-    ChatRequest,
     ChatResponse,
     DiagnosticGoal,
     Evidence,
@@ -164,9 +164,13 @@ class _Run:
 
     async def support(self, task: Task) -> None:
         self.diagnostic_goal = task.diagnostic_goal
+        # o LLM só vê as ferramentas que o principal pode usar; sem nenhuma, é 403, não resposta
+        tools = [t for t in self.customer_tools if t.required_scope in self.ctx.scopes]
+        if not tools:
+            raise InsufficientScope("no customer data scope")
         await self.step(
             "suporte",
-            lambda: run_support(self.deps.llm, self.ctx, self.customer_tools, task),
+            lambda: run_support(self.deps.llm, self.ctx, tools, task),
         )
 
     async def knowledge(
@@ -233,14 +237,17 @@ def _sources(results: list[AgentResult]) -> list[SourceRef]:
 
 
 async def handle_chat(
-    req: ChatRequest, deps: Deps, *, request_id: str | None = None
+    req: AuthorizedChat, deps: Deps, *, request_id: str | None = None
 ) -> ChatResponse:
+    """Recebe um pedido já autorizado (`policies.authorize_chat`): a identidade efetiva vem do
+    principal do token, nunca do payload ou do texto."""
     started = time.perf_counter()
     s = deps.settings
     ctx = RequestContext(
         request_id=request_id or f"req_{uuid.uuid4().hex[:12]}",
-        user_id=req.user_id,
+        user_id=req.customer_id,
         message=req.message,
+        scopes=req.principal.scopes,
         clock=deps.clock,
         budget=Budget(
             max_llm_calls=s.max_llm_calls,

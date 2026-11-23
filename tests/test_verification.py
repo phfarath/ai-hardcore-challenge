@@ -11,7 +11,7 @@ from app.context import Budget, BudgetExceeded, RequestContext, VerificationUnav
 from app.llm import LLMTurn, ToolSpec
 from app.orchestrator import handle_chat
 from app.rag import KnowledgeIndex, chunk_document
-from app.schemas import AgentOutput, ChatRequest, RoutePlan, Task
+from app.schemas import AgentOutput, RoutePlan, Task
 from app.tools.knowledge import build_knowledge_tools
 from tests.fakes import (
     SMART_CHUNK_ID,
@@ -19,6 +19,7 @@ from tests.fakes import (
     FakeEmbedder,
     FrozenClock,
     ScriptedLLM,
+    authorized,
     claim,
     final_turn,
     kout,
@@ -236,7 +237,7 @@ async def test_verification_failure_in_knowledge_flow_returns_503_semantics(
     )
     with pytest.raises(VerificationUnavailable):
         await handle_chat(
-            ChatRequest(message="O que é a Get Smart?", user_id="cliente1988"),
+            authorized("O que é a Get Smart?"),
             await make_deps(tmp_path, llm),
         )
 
@@ -286,9 +287,7 @@ async def test_composed_flow_does_not_send_other_agents_part_to_the_verifier(
             final_turn(kout_support()),
         ]
     )
-    await handle_chat(
-        ChatRequest(message=message, user_id="cliente1988"), await make_deps(tmp_path, llm)
-    )
+    await handle_chat(authorized(message), await make_deps(tmp_path, llm))
     verifier_call = next(c for c in llm.calls if c[0]["content"].startswith("Você é o verificador"))
     payload = json.loads(verifier_call[1]["content"])
     assert payload["mensagem_original_do_cliente"] == "O que é a Get Smart?"

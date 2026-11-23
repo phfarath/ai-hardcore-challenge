@@ -103,6 +103,8 @@ class RequestContext:
     clock: Clock
     budget: Budget
     message: str = ""
+    # escopos do principal autenticado; vazio = nenhuma ferramenta de dados do cliente
+    scopes: frozenset[str] = frozenset()
     evidence: dict[str, Evidence] = field(default_factory=dict)
     tool_results: list[ToolResult] = field(default_factory=list)
     tools_used: list[str] = field(default_factory=list)

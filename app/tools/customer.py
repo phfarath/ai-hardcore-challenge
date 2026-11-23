@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.context import RequestContext
 from app.llm import ToolSpec
+from app.policies import RECEIVABLES_READ, TERMINALS_READ
 from app.repositories import CustomerRepository
 from app.schemas import Evidence, ToolResult
 
@@ -82,6 +83,7 @@ def build_customer_tools(repo: CustomerRepository) -> list[ToolSpec]:
             ),
             args_model=ReceivablesArgs,
             run=get_receivables,
+            required_scope=RECEIVABLES_READ,
         ),
         ToolSpec(
             name="get_terminal_diagnostics",
@@ -92,6 +94,7 @@ def build_customer_tools(repo: CustomerRepository) -> list[ToolSpec]:
             ),
             args_model=DiagnosticsArgs,
             run=get_terminal_diagnostics,
+            required_scope=TERMINALS_READ,
         ),
     ]
 

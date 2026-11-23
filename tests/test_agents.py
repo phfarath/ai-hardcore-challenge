@@ -13,6 +13,7 @@ from app.tools.customer import build_customer_tools
 from app.tools.knowledge import build_knowledge_tools
 from app.tools.search import SearchUnavailable, WebResult
 from tests.fakes import (
+    CUSTOMER_SCOPES,
     FakeEmbedder,
     FakeSearch,
     FrozenClock,
@@ -30,7 +31,13 @@ CUSTOMER_TOOLS = build_customer_tools(JsonCustomerRepository("data/fixtures/cust
 
 
 def ctx_for(user_id: str = "cliente1988") -> RequestContext:
-    return RequestContext(request_id="r", user_id=user_id, clock=FrozenClock(), budget=Budget())
+    return RequestContext(
+        request_id="r",
+        user_id=user_id,
+        clock=FrozenClock(),
+        budget=Budget(),
+        scopes=CUSTOMER_SCOPES,
+    )
 
 
 async def knowledge_tools(

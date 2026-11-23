@@ -20,7 +20,9 @@ DiagnosticGoal = Literal["connectivity", "transaction_decline", "general"]
 
 class ChatRequest(BaseModel):
     message: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
-    user_id: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
+    # seletor do estabelecimento, confrontado com o principal do token; omitido = o único
+    # estabelecimento do principal. Não autentica.
+    user_id: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,64}$")] | None = None
 
 
 class Task(BaseModel):
