@@ -23,3 +23,10 @@ class Deps:
     auth: Authenticator
     state: StateStore
     dev_issuer: DevIssuer | None = None
+
+    async def aclose(self) -> None:
+        """Fecha os clientes HTTP dos provedores no desligamento (SIGTERM → lifespan)."""
+        for resource in (self.llm, self.index, self.search):
+            close = getattr(resource, "aclose", None)
+            if close is not None:
+                await close()

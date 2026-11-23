@@ -232,6 +232,8 @@ class StateStore(Protocol):
 
     def purge_expired(self, now: float) -> int: ...
 
+    def ping(self) -> bool: ...
+
     def get_handoff(self, handoff_id: str) -> Handoff | None: ...
 
     def list_handoffs(self, tenant_id: str, state: HandoffState | None = None) -> list[Handoff]: ...
@@ -271,6 +273,18 @@ class SqliteStateStore:
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys=ON")
         return db
+
+    def ping(self) -> bool:
+        """Prontidão: o arquivo abre e o schema está lá (leitura barata, sem lock de escrita)."""
+        try:
+            db = self._connect()
+            try:
+                db.execute("SELECT 1 FROM runs LIMIT 1").fetchall()
+            finally:
+                db.close()
+        except sqlite3.Error:
+            return False
+        return True
 
     @contextmanager
     def _write(self) -> Generator[sqlite3.Connection]:

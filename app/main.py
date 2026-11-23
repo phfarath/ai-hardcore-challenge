@@ -75,6 +75,14 @@ class Utf8JSONResponse(JSONResponse):
 FIXTURES = DATA_DIR / "fixtures" / "customers.json"
 
 
+class Overloaded(Exception):
+    """O limite de /chat simultâneos do processo foi atingido."""
+
+    def __init__(self, limit: int) -> None:
+        super().__init__(f"limit {limit}")
+        self.limit = limit
+
+
 def build_deps(settings: Settings | None = None) -> Deps:
     """Monta as dependências reais. Falha cedo, com mensagem clara, se faltar configuração."""
     settings = settings or Settings()
@@ -90,6 +98,7 @@ def build_deps(settings: Settings | None = None) -> Deps:
         llm=OpenAIClient(
             openai_key,
             settings.openai_chat_model,
+            timeout=settings.llm_timeout_seconds,
             reasoning_effort=settings.openai_reasoning_effort,
         ),
         repo=JsonCustomerRepository(FIXTURES),
@@ -121,10 +130,15 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         if deps.settings.resume_worker_enabled:
             worker = ResumeWorker(deps.state, deps.auth.access, deps.clock)
             task = asyncio.create_task(worker.run(stop))
+        app.state.draining = False
         yield
+        # desligamento: sai do balanceamento, para o worker e fecha os clientes dos provedores
+        app.state.draining = True
         stop.set()
         if task is not None:
             await task
+        await deps.aclose()
+        log_event("shutdown", status="clients_closed")
 
     app = FastAPI(
         title="Getnet Multi-Agent Support",
@@ -132,6 +146,8 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         default_response_class=Utf8JSONResponse,
     )
     app.state.deps = deps
+    app.state.draining = False
+    in_flight = {"chats": 0}
 
     def error(status_code: int, code: str) -> JSONResponse:
         return Utf8JSONResponse(status_code=status_code, content={"error": code})
@@ -165,6 +181,13 @@ def create_app(deps: Deps | None = None) -> FastAPI:
     @app.exception_handler(CustomerSelectionRequired)
     async def _selection(_: Request, __: CustomerSelectionRequired) -> JSONResponse:
         return error(400, "customer_selection_required")
+
+    @app.exception_handler(Overloaded)
+    async def _overloaded(_: Request, exc: Overloaded) -> JSONResponse:
+        log_event("overloaded", limit=exc.limit)
+        response = error(503, "overloaded")
+        response.headers["Retry-After"] = "2"
+        return response
 
     @app.exception_handler(HandoffExpired)
     async def _handoff_expired(_: Request, __: HandoffExpired) -> JSONResponse:
@@ -237,12 +260,20 @@ def create_app(deps: Deps | None = None) -> FastAPI:
     ) -> ChatResponse:
         # autorização antes do Router: recusa aqui não gasta nenhuma chamada ao LLM
         authorized = authorize_chat(principal, req.message, req.user_id)
-        return await handle_turn(
-            authorized,
-            app.state.deps,
-            conversation_id=req.conversation_id,
-            idempotency_key=idempotency_key,
-        )
+        limit = app.state.deps.settings.max_concurrent_chats
+        if in_flight["chats"] >= limit:
+            # saturação: recusa imediata e previsível, em vez de fila sem prazo
+            raise Overloaded(limit)
+        in_flight["chats"] += 1
+        try:
+            return await handle_turn(
+                authorized,
+                app.state.deps,
+                conversation_id=req.conversation_id,
+                idempotency_key=idempotency_key,
+            )
+        finally:
+            in_flight["chats"] -= 1
 
     @app.get("/conversations/{conversation_id}")
     async def get_conversation(
@@ -319,7 +350,22 @@ def create_app(deps: Deps | None = None) -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict[str, str]:
+        """Liveness: o processo responde. Não depende de provedores externos."""
         return {"status": "ok", "index": app.state.deps.index.status()}
+
+    @app.get("/ready")
+    async def ready() -> JSONResponse:
+        """Readiness: pode receber tráfego? Índice pronto, estado acessível e fora do
+        desligamento. Não chama o LLM: prontidão não pode gastar cota."""
+        deps = app.state.deps
+        checks = {
+            "index": deps.index.status(),
+            "state": "ok" if await asyncio.to_thread(deps.state.ping) else "unavailable",
+            "lifecycle": "draining" if app.state.draining else "running",
+        }
+        ok = checks == {"index": "ready", "state": "ok", "lifecycle": "running"}
+        body = {"status": "ready" if ok else "not_ready", "checks": checks}
+        return Utf8JSONResponse(status_code=200 if ok else 503, content=body)
 
     return app
 

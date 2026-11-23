@@ -108,12 +108,16 @@ class OpenAIClient:
         reasoning_effort: str = "",
     ) -> None:
         self._client = client or openai.AsyncOpenAI(api_key=api_key, timeout=timeout, max_retries=0)
+        self._timeout = timeout
         self._model = model
         self._retry_delay = retry_delay
         # modelos de raciocínio recusam ferramentas no Chat Completions sem `reasoning_effort`
         # (ex.: 'none'); outros modelos rejeitam o parâmetro, por isso só é enviado se configurado
         self._reasoning_effort = reasoning_effort
         self._sleep = asyncio.sleep
+
+    async def aclose(self) -> None:
+        await self._client.close()
 
     async def chat(
         self,
@@ -135,11 +139,16 @@ class OpenAIClient:
         for attempt in range(2):  # uma nova tentativa para erro transitório, após uma pausa
             if attempt:
                 await self._sleep(self._retry_delay)
+            budget.check_deadline()
             budget.charge_llm()
+            # cada chamada usa no máximo o prazo que resta à requisição
+            timeout = max(min(self._timeout, budget.remaining_seconds()), 0.1)
             try:
-                completion = await self._client.chat.completions.parse(**kwargs)
+                completion = await self._client.chat.completions.parse(**kwargs, timeout=timeout)
             except self._TRANSIENT as exc:
                 last_error = exc
+                if not _retryable(exc, budget, self._retry_delay):
+                    break
                 continue
             except ValidationError:
                 # saída fora do schema: o chamador decide (Router tenta de novo, agentes falham)
@@ -165,6 +174,17 @@ class OpenAIClient:
                 },
             )
         raise ProviderUnavailable(describe_provider_error(last_error)) from last_error
+
+
+_PERMANENT_CODES = frozenset({"insufficient_quota", "billing_hard_limit_reached"})
+
+
+def _retryable(exc: Exception, budget: Budget, delay: float) -> bool:
+    """Retry por causa: cota esgotada é permanente (repetir só gasta tempo), e só vale tentar
+    de novo se o prazo restante comporta a pausa e mais uma chamada."""
+    if getattr(exc, "code", None) in _PERMANENT_CODES:
+        return False
+    return budget.remaining_seconds() > delay + 1.0
 
 
 async def _execute_tool(
