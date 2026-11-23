@@ -254,6 +254,7 @@ async def collect(
                         "status": result.status,
                         "workflow": result.workflow,
                         "tools_used": result.tools_used,
+                        "plan_changes": result.plan_changes,
                         "sources": [s.url for s in result.sources],
                         "answer": result.answer,
                     }

@@ -13,7 +13,7 @@ ENUNCIADO_MESSAGES = [
     "How many installments can I split a sale into with the crediário?",
     "Can I sell through WhatsApp using the Payment Link?",
 ]
-WORKFLOWS = {"knowledge", "support", "support_then_knowledge", "combined", "clarify"}
+WORKFLOWS = {"knowledge", "support", "support_then_knowledge", "combined", "clarify", "handoff"}
 
 
 def test_cases_cover_ten_enunciado_messages() -> None:
