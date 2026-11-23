@@ -136,6 +136,11 @@ class Authenticator:
         self._audience = audience
         self._access = access
 
+    @property
+    def access(self) -> AccessRepository:
+        """Mapa de acesso vigente: a retomada de um caso revalida o cliente por ele."""
+        return self._access
+
     async def authenticate(self, token: str) -> Principal:
         key = await self._keys.key_for(token)
         try:

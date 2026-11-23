@@ -103,6 +103,9 @@ class ChatResponse(BaseModel):
     # estado durável (T04): a conversa continua passando este id; o run identifica o turno
     conversation_id: str | None = None
     run_id: str | None = None
+    # andamento separado da qualidade da resposta (T05): o turno terminou, o caso segue aberto
+    run_status: Literal["completed", "awaiting_operator"] = "completed"
+    handoff_id: str | None = None
 
 
 class Claim(BaseModel):

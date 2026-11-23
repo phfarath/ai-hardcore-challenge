@@ -1,5 +1,6 @@
 """API HTTP: POST /chat (autenticado), GET /health e, só em desenvolvimento, POST /dev/token."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
@@ -29,19 +30,38 @@ from app.conversations import (
     handle_turn,
 )
 from app.deps import Deps
+from app.handoffs import (
+    ClaimRequest,
+    OperatorDecision,
+    ResumeWorker,
+    customer_handoff,
+    customer_view,
+    operator_handoff,
+    operator_view,
+)
 from app.llm import OpenAIClient
 from app.observability import configure_logging, log_event
 from app.policies import (
+    HANDOFFS_READ,
+    HANDOFFS_RESOLVE,
     CustomerSelectionRequired,
     Forbidden,
     InsufficientScope,
     ResourceNotFound,
     authorize_chat,
+    authorize_operator,
 )
 from app.rag import KnowledgeIndex, OpenAIEmbedder
 from app.repositories import JsonCustomerRepository
 from app.schemas import ChatRequest, ChatResponse
-from app.state import ConversationBusy, ConversationConflict, SqliteStateStore
+from app.state import (
+    ConversationBusy,
+    ConversationConflict,
+    HandoffConflict,
+    HandoffExpired,
+    HandoffState,
+    SqliteStateStore,
+)
 from app.tools.search import TavilySearch
 
 
@@ -95,7 +115,16 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         configure_logging()
         if app.state.deps is None:
             app.state.deps = build_deps()
+        deps = app.state.deps
+        stop = asyncio.Event()
+        task = None
+        if deps.settings.resume_worker_enabled:
+            worker = ResumeWorker(deps.state, deps.auth.access, deps.clock)
+            task = asyncio.create_task(worker.run(stop))
         yield
+        stop.set()
+        if task is not None:
+            await task
 
     app = FastAPI(
         title="Getnet Multi-Agent Support",
@@ -136,6 +165,15 @@ def create_app(deps: Deps | None = None) -> FastAPI:
     @app.exception_handler(CustomerSelectionRequired)
     async def _selection(_: Request, __: CustomerSelectionRequired) -> JSONResponse:
         return error(400, "customer_selection_required")
+
+    @app.exception_handler(HandoffExpired)
+    async def _handoff_expired(_: Request, __: HandoffExpired) -> JSONResponse:
+        return error(409, "handoff_expired")
+
+    @app.exception_handler(HandoffConflict)
+    async def _handoff_conflict(_: Request, exc: HandoffConflict) -> JSONResponse:
+        log_event("handoff_conflict", detail=str(exc))
+        return error(409, "handoff_conflict")
 
     @app.exception_handler(IdempotencyConflict)
     async def _idempotency(_: Request, __: IdempotencyConflict) -> JSONResponse:
@@ -228,6 +266,56 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         if issuer is None or req.sub not in issuer.profiles:
             raise ResourceNotFound("dev issuer disabled or unknown principal")
         return {"access_token": issuer.issue(req.sub, scopes=req.scopes), "token_type": "Bearer"}
+
+    @app.get("/handoffs/{handoff_id}")
+    async def get_handoff(
+        handoff_id: str, principal: Annotated[Principal, Depends(current_principal)]
+    ) -> dict[str, object]:
+        handoff = customer_handoff(app.state.deps.state, principal, handoff_id, HANDOFFS_READ)
+        return customer_view(handoff)
+
+    @app.get("/operator/handoffs")
+    async def operator_queue(
+        principal: Annotated[Principal, Depends(current_principal)],
+        state: HandoffState | None = "pending",
+    ) -> list[dict[str, object]]:
+        authorize_operator(principal, principal.tenant_id, HANDOFFS_READ)
+        handoffs = app.state.deps.state.list_handoffs(principal.tenant_id, state)
+        return [operator_view(h) for h in handoffs]
+
+    @app.get("/operator/handoffs/{handoff_id}")
+    async def operator_detail(
+        handoff_id: str, principal: Annotated[Principal, Depends(current_principal)]
+    ) -> dict[str, object]:
+        deps = app.state.deps
+        return operator_view(operator_handoff(deps.state, principal, handoff_id, HANDOFFS_READ))
+
+    @app.post("/operator/handoffs/{handoff_id}/claim")
+    async def operator_claim(
+        handoff_id: str,
+        req: ClaimRequest,
+        principal: Annotated[Principal, Depends(current_principal)],
+    ) -> dict[str, object]:
+        deps = app.state.deps
+        operator_handoff(deps.state, principal, handoff_id, HANDOFFS_RESOLVE)
+        now = deps.clock.now().timestamp()
+        claimed = deps.state.claim_handoff(handoff_id, principal.sub, req.expected_version, now)
+        return operator_view(claimed)
+
+    @app.post("/operator/handoffs/{handoff_id}/resolve")
+    async def operator_resolve(
+        handoff_id: str,
+        req: OperatorDecision,
+        principal: Annotated[Principal, Depends(current_principal)],
+    ) -> dict[str, object]:
+        deps = app.state.deps
+        operator_handoff(deps.state, principal, handoff_id, HANDOFFS_RESOLVE)
+        decision = req.model_dump(exclude={"expected_version"}) | {"operator": principal.sub}
+        now = deps.clock.now().timestamp()
+        resolved = deps.state.resolve_handoff(
+            handoff_id, principal.sub, req.expected_version, decision, now
+        )
+        return operator_view(resolved)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

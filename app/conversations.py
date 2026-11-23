@@ -10,14 +10,15 @@ import re
 import sqlite3
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 
 from app.deps import Deps
 from app.orchestrator import run_chat
-from app.policies import AuthorizedChat, ResourceNotFound
+from app.policies import HANDOFFS_CREATE, AuthorizedChat, ResourceNotFound
 from app.schemas import ChatResponse, RoutePlan
-from app.state import Conversation, Message, RunRecord, TurnResult, TurnStart
+from app.state import Conversation, HandoffDraft, Message, RunRecord, TurnResult, TurnStart
 from app.tools.customer import format_terminal_options
 
 _LEASE_MARGIN_SECONDS = 5.0
@@ -35,6 +36,15 @@ STALE_OPTIONS = (
     "escolhida. "
 )
 UNRESOLVED_CHOICE = "Não identifiquei qual terminal da lista você escolheu. "
+
+
+@dataclass
+class _TurnOutput:
+    response: ChatResponse
+    pending: dict[str, Any] | None
+    llm_calls: int = 0
+    tool_calls: int = 0
+    handoff: HandoffDraft | None = None
 
 
 class IdempotencyConflict(Exception):
@@ -156,12 +166,15 @@ async def handle_turn(
 
     history = [(m.role, m.content) for m in store.messages(conversation.id, _HISTORY_MESSAGES)]
     try:
-        response, pending, usage = await _execute(chat, deps, conversation, history, now)
+        out = await _execute(chat, deps, conversation, history, now)
     except BaseException:
         store.fail_run(run.id, deps.clock.now().timestamp())
         raise
 
-    response = response.model_copy(update={"conversation_id": conversation.id, "run_id": run.id})
+    update: dict[str, Any] = {"conversation_id": conversation.id, "run_id": run.id}
+    if out.handoff is not None:
+        update |= {"handoff_id": out.handoff.id, "run_status": "awaiting_operator"}
+    response = out.response.model_copy(update=update)
     store.complete_turn(
         run.id,
         conversation.id,
@@ -170,9 +183,10 @@ async def handle_turn(
             user_message=chat.message,
             assistant_message=response.answer,
             response=response.model_dump(mode="json"),
-            pending=pending,
-            llm_calls=usage[0],
-            tool_calls=usage[1],
+            pending=out.pending,
+            llm_calls=out.llm_calls,
+            tool_calls=out.tool_calls,
+            handoff=out.handoff,
             now=deps.clock.now().timestamp(),
             expires_at=expires_at,
         ),
@@ -186,7 +200,7 @@ async def _execute(
     conversation: Conversation,
     history: Sequence[tuple[str, str]],
     now: float,
-) -> tuple[ChatResponse, dict[str, Any] | None, tuple[int, int]]:
+) -> _TurnOutput:
     """Resolve um esclarecimento pendente ou executa um pedido novo."""
     pending = _pending_choice(conversation, now)
     plan: RoutePlan | None = None
@@ -205,12 +219,16 @@ async def _execute(
             selected = choice
             message = f"{pending['question']}\n(Terminal escolhido pelo cliente: {choice})"
 
+    # o caso só é aberto se o principal puder criá-lo; senão a resposta fica na recomendação
+    can_open = HANDOFFS_CREATE in chat.principal.scopes
+    handoff_id = f"hof_{uuid.uuid4().hex[:16]}" if can_open else None
     outcome = await run_chat(
         AuthorizedChat(message=message, customer_id=chat.customer_id, principal=chat.principal),
         deps,
         history=history,
         plan=plan,
         selected_terminal=selected,
+        handoff_id=handoff_id,
     )
     new_pending = None
     if outcome.terminal_options and outcome.response.status in ("needs_clarification", "partial"):
@@ -221,12 +239,22 @@ async def _execute(
             "question": message,
             "expires_at": now + deps.settings.pending_choice_minutes * 60,
         }
-    return outcome.response, new_pending, (outcome.llm_calls, outcome.tool_calls)
+    handoff = None
+    if outcome.handoff is not None and handoff_id is not None:
+        handoff = HandoffDraft(
+            id=handoff_id,
+            reason=outcome.handoff["reason"],
+            snapshot=outcome.handoff,
+            expires_at=now + deps.settings.handoff_ttl_hours * 3600,
+        )
+    return _TurnOutput(
+        outcome.response, new_pending, outcome.llm_calls, outcome.tool_calls, handoff
+    )
 
 
 def _ask_again(
     reason: str, current: list[str], pending: dict[str, Any], now: float, deps: Deps
-) -> tuple[ChatResponse, dict[str, Any] | None, tuple[int, int]]:
+) -> _TurnOutput:
     """Pergunta de novo sem chamar o LLM, com a lista atual guardada para a próxima escolha."""
     response = ChatResponse(
         request_id=f"req_{uuid.uuid4().hex[:12]}",
@@ -240,7 +268,7 @@ def _ask_again(
         "options": current,
         "expires_at": now + deps.settings.pending_choice_minutes * 60,
     }
-    return response, renewed if current else None, (0, 0)
+    return _TurnOutput(response, renewed if current else None)
 
 
 def conversation_view(messages: list[Message], conversation: Conversation) -> dict[str, Any]:

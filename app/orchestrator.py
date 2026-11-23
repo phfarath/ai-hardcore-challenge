@@ -9,6 +9,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from app.agents.knowledge import run_knowledge
 from app.agents.router import route
@@ -55,6 +56,10 @@ _REASONS: dict[type[Exception], str] = {
     VerificationUnavailable: "a verificação das fontes não pôde ser concluída",
 }
 _LABELS = {"customer_support": "Suporte ao cliente", "knowledge": "Conhecimento"}
+_HANDOFF_OPENED = (
+    "Como não encontrei orientação oficial para este problema, abri o caso interno {id} para a "
+    "equipe de atendimento. A resposta do atendente aparecerá nesta conversa."
+)
 _HANDOFF_NOTE = (
     "Como não encontrei orientação oficial para este problema, recomendo procurar o atendimento "
     "da Getnet. Isto é apenas uma recomendação: nenhum atendimento foi aberto."
@@ -246,6 +251,8 @@ class ChatOutcome:
     terminal_options: list[str]
     llm_calls: int
     tool_calls: int
+    # contexto do caso humano, só quando o fluxo pediu escalonamento (sem dados do cliente)
+    handoff: dict[str, Any] | None = None
 
 
 async def handle_chat(
@@ -262,10 +269,12 @@ async def run_chat(
     history: Sequence[tuple[str, str]] = (),
     plan: RoutePlan | None = None,
     selected_terminal: str | None = None,
+    handoff_id: str | None = None,
 ) -> ChatOutcome:
     """Recebe um pedido já autorizado (`policies.authorize_chat`): a identidade efetiva vem do
     principal do token, nunca do payload ou do texto. `plan` e `selected_terminal` retomam um
-    esclarecimento resolvido pelo servidor: o Router não roda de novo."""
+    esclarecimento resolvido pelo servidor: o Router não roda de novo. `handoff_id` é o id
+    reservado para o caso humano, se o turno durável puder abri-lo."""
     started = time.perf_counter()
     s = deps.settings
     ctx = RequestContext(
@@ -313,10 +322,21 @@ async def run_chat(
 
     status: Status = "partial" if run.failures else merge_status(run.results)
     answer = _compose(run.results, run.failures)
+    handoff: dict[str, Any] | None = None
     if _needs_handoff(plan, run):
-        status, answer = "handoff_recommended", f"{answer}\n\n{_HANDOFF_NOTE}"
+        note = _HANDOFF_OPENED.format(id=handoff_id) if handoff_id else _HANDOFF_NOTE
+        status, answer = "handoff_recommended", f"{answer}\n\n{note}"
+        handoff = {
+            "reason": "diagnosed_issue_without_official_guidance",
+            "question": req.message,
+            "technical_context": run.diagnostics_context() or {},
+            "gap": run.results[1].answer,
+            "source_ids": _loggable_ids([e for r in run.results for e in r.evidence]),
+        }
     response = _finish(ctx, deps, plan, started, status, answer, run.results)
-    return _outcome(ctx, plan, response, routed)
+    outcome = _outcome(ctx, plan, response, routed)
+    outcome.handoff = handoff
+    return outcome
 
 
 def _outcome(
@@ -343,7 +363,7 @@ def _outcome(
 
 def _needs_handoff(plan: RoutePlan, run: _Run) -> bool:
     """Problema técnico diagnosticado e nenhuma orientação oficial encontrada: o sistema não
-    resolve sozinho, então recomenda atendimento humano (só recomenda; nada é aberto)."""
+    resolve sozinho e escala para atendimento humano (o turno durável abre o caso)."""
     if plan.workflow != "support_then_knowledge" or run.failures or len(run.results) != 2:
         return False
     issue = (run.diagnostics_context() or {}).get("issue", "none")

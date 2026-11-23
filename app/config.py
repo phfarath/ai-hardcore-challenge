@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     # retenção configurável; não é um prazo regulatório validado
     conversation_retention_hours: int = 72
     pending_choice_minutes: int = 15
+    handoff_ttl_hours: int = 24
+    resume_worker_enabled: bool = True
 
     max_llm_calls: int = 8
     max_tool_calls: int = 4
