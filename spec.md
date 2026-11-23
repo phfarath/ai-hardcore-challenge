@@ -41,7 +41,7 @@ Critério de sucesso do avaliador: clonar, configurar `.env`, rodar três comand
 **Anti-objetivos** (falha mesmo que "funcione")
 - Resposta que apresente recebimento *previsto* como *confirmado*.
 - Condição comercial da Getnet inventada sem evidência.
-- Qualquer caminho em que o texto da mensagem altere o `user_id` efetivo.
+- Qualquer caminho em que o texto da mensagem, um campo do payload ou um argumento do LLM altere o cliente efetivo.
 - Fallback silencioso para um cliente padrão.
 - Segredos impressos, logados ou commitados.
 
@@ -73,7 +73,8 @@ Agentes se comunicam por **objetos Pydantic passados entre funções**. Validaç
 ### 4.1 Contratos (`app/schemas.py`)
 | Contrato | Conteúdo |
 |---|---|
-| `RequestContext` | `request_id`, `user_id`, relógio (America/Sao_Paulo, injetável), deadline, orçamento |
+| `RequestContext` | `request_id`, `user_id` (cliente já autorizado), `scopes` do principal, relógio (America/Sao_Paulo, injetável), deadline, orçamento |
+| `Principal` (`app/auth.py`) | `sub`, `tenant_id`, `roles`, `scopes` (do token) e `customer_ids` (resolvidos pelo servidor) |
 | `RoutePlan` | `workflow` ∈ {knowledge, support, support_then_knowledge, combined, clarify}; até 2 `tasks` (`agent`, `question`, `source_scope`) |
 | `ToolResult` | `status`, dados tipados, `evidence` (ids), data de referência, erro |
 | `AgentResult` | resposta, `evidence_ids` usados, pendências |
@@ -82,7 +83,15 @@ Agentes se comunicam por **objetos Pydantic passados entre funções**. Validaç
 `status` ∈ `answered | partial | needs_clarification | insufficient_evidence | handoff_recommended | customer_not_found`.
 "handoff_recommended" é apenas recomendação; nenhum atendimento é "aberto". Regra implementada: em `support_then_knowledge`, quando o diagnóstico mostra um problema (conectividade ou transação recusada) e o Knowledge não encontra orientação oficial, o status é `handoff_recommended` e a resposta traz o diagnóstico, a lacuna e a recomendação.
 
-**Cliente desconhecido** *(decisão do assistente)*: a identidade só é verificada dentro das ferramentas do Support, não antes do Router. Perguntas públicas (Knowledge) de um `user_id` desconhecido são respondidas normalmente. Se uma tarefa exige dados do cliente e ele não existe, a ferramenta devolve `not_found`, a resposta sai com `status="customer_not_found"` (HTTP 200, pois a requisição foi processada), sem fallback. Em `combined`, o ramo público ainda é entregue e o resultado final é `partial`.
+**Cliente sem cadastro** *(decisão do assistente)*: o acesso é autorizado antes do Router (§4.8), mas a existência do cadastro só é verificada dentro das ferramentas do Support. Um principal autorizado para um estabelecimento sem registro (ex.: mapa de acesso desatualizado; `user-c` → `desconhecido` nos dados de demo) recebe respostas públicas normalmente. Se uma tarefa exige dados do cliente e ele não existe, a ferramenta devolve `not_found`, a resposta sai com `status="customer_not_found"` (HTTP 200, pois a requisição foi processada), sem fallback. Em `combined`, o ramo público ainda é entregue e o resultado final é `partial`.
+
+### 4.8 Identidade e autorização (T02)
+- `/chat` exige `Authorization: Bearer <JWT>`. Algoritmo fixo RS256; assinatura, `iss`, `aud`, `exp`, `iat`, `sub` obrigatórios, `nbf` quando presente (tolerância de 30 s), `tenant_id` obrigatório. A chave vem do emissor configurado (JWKS com cache), nunca de um endereço no token.
+- O token diz quem é o chamador; os estabelecimentos que ele acessa vêm de um repositório do servidor (`AccessRepository`). `user_id` no payload é só um **seletor**, confrontado com esse conjunto antes do Router; omitido, vale o único estabelecimento do principal (mais de um → 400 `customer_selection_required`).
+- Escopos: `receivables:read`, `terminals:read` (ferramentas do Support), `handoffs:create|read|resolve` (T05). O Support só recebe as ferramentas permitidas pelos escopos; sem nenhuma → 403 `insufficient_scope`. O executor de ferramentas confere o escopo de novo antes de executar (defesa em profundidade).
+- Política de existência: cliente alheio no seletor → 403 `forbidden`, igual para cliente existente ou não. Recursos com id (conversa, execução, caso; T04/T05) de outro dono → 404, mesmo sem escopo (`authorize_owned`). Operador age só no próprio tenant e não conversa como cliente (`authorize_operator`).
+- `APP_ENV=development`: emissor local com chave efêmera e `POST /dev/token` (só reduz escopos do perfil, `data/fixtures/principals.json`). `APP_ENV=production` (padrão): exige `AUTH_ISSUER` e `AUTH_JWKS_URL` https, recusa o emissor local e a rota `/dev/token` responde 404.
+- Recusas de autenticação e de acesso ao cliente acontecem antes de qualquer chamada ao LLM; a falta de escopo de dados é decidida depois que o Router escolhe o Support, antes de o Support rodar.
 
 ### 4.2 Router
 Saída estruturada validada pelo executor: fluxo na lista permitida, ≤2 tarefas, agentes existentes, sequência coerente com o fluxo. Plano inválido → uma nova tentativa dentro do orçamento; persistindo, `clarify`/erro tratado. Extrai subperguntas em mensagens compostas.
@@ -126,9 +135,10 @@ Especialistas ≤2; chamadas LLM ≤8 (incluindo retry e verificação); ferrame
 ## 6. API
 
 ```
-POST /chat   {"message": str, "user_id": str}
+POST /chat        Authorization: Bearer <JWT>   {"message": str, "user_id": str | null}
+POST /dev/token   {"sub": str, "scopes": [str] | null}   (só APP_ENV=development)
 ```
-Payload inválido → 422 sem chamar o modelo. Indisponibilidade total do provedor → erro HTTP distinto de `insufficient_evidence`. `user_id` identifica um cliente sintético; **não autentica** (documentado no README).
+Payload inválido → 422 sem chamar o modelo. Token ausente/inválido → 401 `unauthorized` (com `WWW-Authenticate: Bearer`); cliente não autorizado → 403 `forbidden`; sem escopo → 403 `insufficient_scope`. Indisponibilidade total do provedor → erro HTTP distinto de `insufficient_evidence`. `user_id` seleciona o estabelecimento; **não autentica** (§4.8).
 
 ## 7. Dados demonstrativos
 
@@ -136,7 +146,9 @@ Payload inválido → 422 sem chamar o modelo. Indisponibilidade total do proved
 |---|---|
 | `cliente1988` | recebíveis previstos (ontem) + terminal com problema conhecido (conectividade) e transação recusada |
 | `cliente2000` | recebíveis diferentes + terminal funcionando |
-| desconhecido | `status="customer_not_found"` para perguntas que exigem dados do cliente; perguntas públicas funcionam normalmente |
+| `desconhecido` | autorizado para `user-c`, sem cadastro: `status="customer_not_found"` para perguntas que exigem dados do cliente; perguntas públicas funcionam normalmente |
+
+Principais de desenvolvimento (`data/fixtures/principals.json`): `user-a` → `cliente1988`, `user-b` → `cliente2000`, `user-c` → `desconhecido`, `operator-1` (papel `operator`, sem estabelecimento).
 
 ## 8. Mapeamento dos 10 cenários do enunciado
 

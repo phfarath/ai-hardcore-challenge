@@ -61,8 +61,12 @@ A imagem da API roda como usuário sem privilégios e tem `HEALTHCHECK` em `/hea
 
 ### Exemplo
 
+`/chat` exige um token. Na demo (`APP_ENV=development`, padrão do `docker compose`), o emissor local entrega tokens para os principais de desenvolvimento:
+
 ```bash
-curl -s localhost:8000/chat -H 'content-type: application/json' \
+TOKEN=$(curl -s localhost:8000/dev/token -H 'content-type: application/json' -d '{"sub": "user-a"}' \
+  | python -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+curl -s localhost:8000/chat -H 'content-type: application/json' -H "Authorization: Bearer $TOKEN" \
   -d '{"message": "When will the money from yesterday'\''s sales be deposited?", "user_id": "cliente1988"}'
 ```
 
@@ -79,12 +83,16 @@ curl -s localhost:8000/chat -H 'content-type: application/json' \
 }
 ```
 
-Clientes sintéticos: `cliente1988` (recebíveis previstos + terminal offline com `ADQ 1-19` e última transação recusada), `cliente2000` (outros recebíveis + 2 terminais funcionando). Qualquer outro `user_id` válido → `customer_not_found` nas perguntas de dados individuais; perguntas públicas funcionam normalmente.
+Clientes sintéticos: `cliente1988` (recebíveis previstos + terminal offline com `ADQ 1-19` e última transação recusada), `cliente2000` (outros recebíveis + 2 terminais funcionando). Principais de desenvolvimento: `user-a` → `cliente1988`, `user-b` → `cliente2000`, `user-c` → `desconhecido` (autorizado, sem cadastro → `customer_not_found` nas perguntas de dados individuais) e `operator-1` (operador, sem estabelecimento). `user_id` é só um seletor: precisa ser um estabelecimento do token, senão 403.
 
 ### Erros HTTP
 
 | Código | Quando |
 |---|---|
+| 401 `unauthorized` | token ausente, inválido, expirado, de outro emissor/audiência ou sem `tenant_id` — o LLM nem é chamado |
+| 403 `forbidden` | `user_id` que não pertence ao principal (mesma resposta para cliente existente ou não) — o LLM nem é chamado |
+| 403 `insufficient_scope` | o Router escolheu o Support, mas o token não tem escopo de dados do cliente |
+| 400 `customer_selection_required` | principal com mais de um estabelecimento sem `user_id` |
 | 422 | payload inválido (mensagem vazia/gigante, `user_id` fora de `^[A-Za-z0-9_-]{1,64}$`) — o LLM nem é chamado |
 | 503 `llm_unavailable` | provedor de LLM falhou de forma persistente (1 retry com pausa) ou devolveu saída fora do schema duas vezes |
 | 503 `index_unavailable` | índice ausente/incompatível numa pergunta que exige RAG |
@@ -127,7 +135,7 @@ flowchart TD
 
 ### Fluxo de mensagens
 
-1. `POST /chat` valida `message` e `user_id` e cria um `RequestContext` por requisição (identidade, relógio, orçamento, evidências). Não existe `current_user_id` global.
+1. `POST /chat` valida o token (RS256, emissor, audiência, validade) e monta o `Principal`; confronta o `user_id` com os estabelecimentos do principal (resolvidos no servidor) e só então cria um `RequestContext` por requisição (cliente autorizado, escopos, relógio, orçamento, evidências). Não existe `current_user_id` global.
 2. O **Router** faz uma chamada estruturada (sem ferramentas e sem a identidade do cliente). O **código** valida o plano: fluxo permitido, ordem e agentes corretos, no máximo 2 tarefas. Plano inválido → 1 nova tentativa → `clarify`.
 3. O orquestrador executa o fluxo **em sequência**. Agentes não se chamam: o código passa objetos tipados.
    - `support_then_knowledge`: o Support consulta o diagnóstico; só `terminal_model`, `error_code` e `issue` seguem ao Knowledge (nunca ids, valores ou identidade).
@@ -157,7 +165,7 @@ Notas: o enunciado sugere o site global, mas os cenários são brasileiros, ent�
 - **Composição e status em código**: evita uma chamada extra de LLM. O bloco de recebíveis é um template com os dados da ferramenta, e o texto livre do LLM é trocado por uma nota fixa se afirmar pagamento/confirmação de um recebimento que a ferramenta não marca como `pago` (verificação por padrões, em PT e EN: é uma salvaguarda forte, não uma prova semântica).
 - **Execução sequencial**: simples e previsível; paralelizar o `combined` é uma otimização futura.
 - **Chroma local**: zero serviços extras para a demo; para múltiplas instâncias, trocar por um vetor store gerenciado (a interface `KnowledgeIndex` isola isso).
-- **`user_id` não autentica**: no desafio ele só seleciona um cliente sintético. Em produção precisa vir de identidade autenticada/autorizada.
+- **Identidade pelo token, acesso pelo servidor**: o JWT diz quem chama; o mapa principal → estabelecimentos é do servidor, e o `user_id` do payload é só um seletor conferido contra ele. Em desenvolvimento um emissor local (chave efêmera) assina tokens pelo mesmo caminho criptográfico; produção exige um provedor de identidade (JWKS) e recusa o emissor local. Sem sistema próprio de senhas.
 - **Sem memória entre requisições**: o payload do desafio não tem sessão; se o sistema pede esclarecimento, a próxima requisição precisa trazer contexto.
 - **Estimativa de tokens (~4 caracteres/token)** no *chunking*, para não depender de baixar um tokenizador.
 - Fixtures de clientes usam **offsets de data** para que "ontem" funcione em qualquer dia da demo.
@@ -240,7 +248,7 @@ Todo o código, os testes, a documentação e as revisões foram feitos com **um
 
 ## Limitações conhecidas
 
-- Dados de clientes são sintéticos; o `user_id` não é autenticado.
+- Dados de clientes são sintéticos. O mapa de acesso (principal → estabelecimentos) é uma fixture; em produção seria outra implementação de `AccessRepository` ligada ao cadastro real.
 - A verificação de suporte e cobertura do Knowledge é uma chamada de LLM: é calibrada pelo prompt e varia entre execuções. Ela é conservadora (prefere `partial`/`insufficient_evidence` a liberar texto sem suporte); em duas rodadas seguidas dos `evals` após a revisão v2, o placar foi 10/15 e 12/15, sem nenhuma resposta errada liberada (rota, ferramentas, valores e afirmações proibidas em 100%) e com o `x13` corrigido nas duas; as falhas restantes são `partial`/`insufficient_evidence` (comparação Get Clássica × Get Smart, Pix, crediário, combinado) e uma cotação web com snippet ambíguo.
 - O texto do Suporte pode sair em português mesmo com pergunta em inglês (o bloco de recebíveis é um template em português); o Conhecimento responde no idioma da pergunta.
 - O filtro que impede o LLM de afirmar "pago/confirmado" é por padrões (pt/en) e é conservador: pode trocar frases inofensivas por uma nota fixa.
