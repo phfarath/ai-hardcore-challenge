@@ -93,6 +93,17 @@ Agentes se comunicam por **objetos Pydantic passados entre funções**. Validaç
 - `APP_ENV=development`: emissor local com chave efêmera e `POST /dev/token` (só reduz escopos do perfil, `data/fixtures/principals.json`). `APP_ENV=production` (padrão): exige `AUTH_ISSUER` e `AUTH_JWKS_URL` https, recusa o emissor local e a rota `/dev/token` responde 404.
 - Recusas de autenticação e de acesso ao cliente acontecem antes de qualquer chamada ao LLM; a falta de escopo de dados é decidida depois que o Router escolhe o Support, antes de o Support rodar.
 
+### 4.9 Conversa durável e idempotência (T04)
+- SQLite atrás de `StateStore` (`app/state.py`): `conversations` (tenant, dono `sub`, cliente, versão, pendência, expiração), `messages` (sequência por conversa) e `runs` (estado `running|completed|failed`, hash do pedido, chave de idempotência, resposta salva, consumo, lease). Execuções e mensagens herdam o escopo pela conversa.
+- Transações curtas: o turno abre a execução `running` com lease (deadline + 5 s), libera o banco, executa e grava mensagens, pendência, versão e resultado numa transação que confere a versão da conversa. Nenhuma transação fica aberta durante chamada ao LLM.
+- Concorrência: uma execução ativa por conversa; um segundo turno simultâneo recebe 409 `conversation_busy`. Versão divergente na gravação → 409 `conversation_conflict`, nada é sobrescrito.
+- Idempotência (`Idempotency-Key`, por tenant + `sub`): mesma chave e mesmo conteúdo (hash de mensagem, cliente e conversa) devolve a resposta salva sem nova execução; outro conteúdo → 409 `idempotency_key_reused`; ainda em execução → 409 `request_in_progress`; execução falha ou abandonada (lease vencida, ex.: processo caiu) → reexecuta com a mesma chave.
+- Conversa: só o mesmo principal, tenant e cliente a continuam, e só enquanto o acesso ao cliente estiver vigente (revalidado a cada turno). Qualquer outro caso, inclusive expirada → 404. `GET /conversations/{id}` segue a mesma regra.
+- Esclarecimento de terminal: a lista apresentada é renderizada pelo servidor, numerada, e guardada com o plano e a pergunta original (validade de 15 min, configurável). A resposta ("o segundo", "2", "the first", "o último" ou o código) é resolvida sem LLM e só vale se a lista atual de terminais do cliente for igual à guardada; posição fora da lista ou lista mudada → nova pergunta com a lista atual, sem LLM. A retomada reaproveita o plano salvo (sem novo Router) e reconsulta o diagnóstico. Mensagem que não parece escolha segue como pedido novo.
+- Histórico: as últimas mensagens da conversa vão ao Router como dado (nunca instrução), só para completar referências da mensagem nova.
+- Retenção configurável (`CONVERSATION_RETENTION_HOURS`, padrão 72 h; não é prazo regulatório): conversas vencidas são apagadas com mensagens e execuções a cada turno.
+- Fora do escopo desta etapa: checkpoints por passo e worker de recuperação; um turno interrompido é refeito por inteiro pela mesma chave.
+
 ### 4.2 Router
 Saída estruturada validada pelo executor: fluxo na lista permitida, ≤2 tarefas, agentes existentes, sequência coerente com o fluxo. Plano inválido → uma nova tentativa dentro do orçamento; persistindo, `clarify`/erro tratado. Extrai subperguntas em mensagens compostas.
 
@@ -137,7 +148,10 @@ Especialistas ≤2; chamadas LLM ≤8 (incluindo retry e verificação); ferrame
 ```
 POST /chat        Authorization: Bearer <JWT>   {"message": str, "user_id": str | null}
 POST /dev/token   {"sub": str, "scopes": [str] | null}   (só APP_ENV=development)
+POST /chat        + {"conversation_id": str | null}, header opcional Idempotency-Key
+GET  /conversations/{id}   mensagens e pendência da conversa (mesma autorização)
 ```
+A resposta traz `conversation_id` e `run_id`. Conflitos de estado → 409 (`conversation_busy`, `conversation_conflict`, `idempotency_key_reused`, `request_in_progress`); conversa inexistente, alheia ou expirada → 404 (§4.9).
 Payload inválido → 422 sem chamar o modelo. Token ausente/inválido → 401 `unauthorized` (com `WWW-Authenticate: Bearer`); cliente não autorizado → 403 `forbidden`; sem escopo → 403 `insufficient_scope`. Indisponibilidade total do provedor → erro HTTP distinto de `insufficient_evidence`. `user_id` seleciona o estabelecimento; **não autentica** (§4.8).
 
 ## 7. Dados demonstrativos

@@ -93,6 +93,8 @@ Clientes sintéticos: `cliente1988` (recebíveis previstos + terminal offline co
 | 403 `forbidden` | `user_id` que não pertence ao principal (mesma resposta para cliente existente ou não) — o LLM nem é chamado |
 | 403 `insufficient_scope` | o Router escolheu o Support, mas o token não tem escopo de dados do cliente |
 | 400 `customer_selection_required` | principal com mais de um estabelecimento sem `user_id` |
+| 404 `not_found` | `conversation_id` inexistente, de outro principal/cliente ou expirada |
+| 409 | `conversation_busy` (outro turno da conversa em andamento), `idempotency_key_reused` (mesma chave, outro conteúdo), `request_in_progress`, `conversation_conflict` |
 | 422 | payload inválido (mensagem vazia/gigante, `user_id` fora de `^[A-Za-z0-9_-]{1,64}$`) — o LLM nem é chamado |
 | 503 `llm_unavailable` | provedor de LLM falhou de forma persistente (1 retry com pausa) ou devolveu saída fora do schema duas vezes |
 | 503 `index_unavailable` | índice ausente/incompatível numa pergunta que exige RAG |
@@ -166,7 +168,7 @@ Notas: o enunciado sugere o site global, mas os cenários são brasileiros, ent�
 - **Execução sequencial**: simples e previsível; paralelizar o `combined` é uma otimização futura.
 - **Chroma local**: zero serviços extras para a demo; para múltiplas instâncias, trocar por um vetor store gerenciado (a interface `KnowledgeIndex` isola isso).
 - **Identidade pelo token, acesso pelo servidor**: o JWT diz quem chama; o mapa principal → estabelecimentos é do servidor, e o `user_id` do payload é só um seletor conferido contra ele. Em desenvolvimento um emissor local (chave efêmera) assina tokens pelo mesmo caminho criptográfico; produção exige um provedor de identidade (JWKS) e recusa o emissor local. Sem sistema próprio de senhas.
-- **Sem memória entre requisições**: o payload do desafio não tem sessão; se o sistema pede esclarecimento, a próxima requisição precisa trazer contexto.
+- **Conversa em SQLite**: uma instância basta ao escopo, sem servidor de banco. O turno grava a intenção, executa sem transação aberta e grava o resultado conferindo a versão; a escolha "o segundo" é resolvida pelo servidor contra a lista que ele mesmo apresentou, nunca pelo LLM.
 - **Estimativa de tokens (~4 caracteres/token)** no *chunking*, para não depender de baixar um tokenizador.
 - Fixtures de clientes usam **offsets de data** para que "ontem" funcione em qualquer dia da demo.
 
