@@ -1,8 +1,10 @@
 """Router Agent: transforma a mensagem em um plano pequeno e validado pelo código."""
 
+from collections.abc import Sequence
+
 from app.context import RequestContext
 from app.llm import LLMClient
-from app.prompts import ROUTER_SYSTEM, today_label
+from app.prompts import ROUTER_HISTORY, ROUTER_SYSTEM, today_label
 from app.schemas import RoutePlan
 
 GENERIC_CLARIFICATION = (
@@ -32,13 +34,30 @@ def validate_plan(plan: RoutePlan) -> None:
         raise PlanError(f"{plan.workflow} requires tasks {expected[plan.workflow]}, got {agents}")
 
 
-async def route(llm: LLMClient, ctx: RequestContext, message: str) -> RoutePlan:
+_HISTORY_TURNS = 4
+_HISTORY_CHARS = 400
+
+
+def _history_block(history: Sequence[tuple[str, str]]) -> str:
+    labels = {"user": "cliente", "assistant": "atendimento"}
+    lines = [
+        f"{labels.get(role, role)}: {content[:_HISTORY_CHARS]}"
+        for role, content in history[-_HISTORY_TURNS:]
+    ]
+    return ROUTER_HISTORY.format(history="\n".join(lines))
+
+
+async def route(
+    llm: LLMClient, ctx: RequestContext, message: str, history: Sequence[tuple[str, str]] = ()
+) -> RoutePlan:
     """Uma chamada estruturada, sem ferramentas e sem identidade do cliente.
     Plano inválido: uma nova tentativa; persistindo, pede esclarecimento genérico."""
     messages: list[dict[str, str]] = [
         {"role": "system", "content": ROUTER_SYSTEM.format(today=today_label(ctx.clock.now()))},
         {"role": "user", "content": message},
     ]
+    if history:  # contexto da conversa como dado, antes da mensagem nova
+        messages.insert(1, {"role": "user", "content": _history_block(history)})
     for attempt in range(2):
         turn = await llm.chat(messages, tools=None, output_model=RoutePlan, budget=ctx.budget)
         if isinstance(turn.parsed, RoutePlan):

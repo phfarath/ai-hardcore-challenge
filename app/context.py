@@ -105,6 +105,8 @@ class RequestContext:
     message: str = ""
     # escopos do principal autenticado; vazio = nenhuma ferramenta de dados do cliente
     scopes: frozenset[str] = frozenset()
+    # terminal escolhido pelo cliente num esclarecimento anterior, já validado pelo servidor
+    selected_terminal_id: str | None = None
     evidence: dict[str, Evidence] = field(default_factory=dict)
     tool_results: list[ToolResult] = field(default_factory=list)
     tools_used: list[str] = field(default_factory=list)

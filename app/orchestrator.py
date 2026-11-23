@@ -7,7 +7,8 @@ contexto técnico mínimo (modelo, código de erro, tipo de problema) vai do Sup
 import asyncio
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass
 
 from app.agents.knowledge import run_knowledge
 from app.agents.router import route
@@ -236,11 +237,35 @@ def _sources(results: list[AgentResult]) -> list[SourceRef]:
     return [SourceRef(**e.model_dump()) for e in unique.values()]
 
 
+@dataclass
+class ChatOutcome:
+    """Resposta e o que o turno durável precisa guardar: plano, opções apresentadas e consumo."""
+
+    response: ChatResponse
+    plan: RoutePlan
+    terminal_options: list[str]
+    llm_calls: int
+    tool_calls: int
+
+
 async def handle_chat(
     req: AuthorizedChat, deps: Deps, *, request_id: str | None = None
 ) -> ChatResponse:
+    return (await run_chat(req, deps, request_id=request_id)).response
+
+
+async def run_chat(
+    req: AuthorizedChat,
+    deps: Deps,
+    *,
+    request_id: str | None = None,
+    history: Sequence[tuple[str, str]] = (),
+    plan: RoutePlan | None = None,
+    selected_terminal: str | None = None,
+) -> ChatOutcome:
     """Recebe um pedido já autorizado (`policies.authorize_chat`): a identidade efetiva vem do
-    principal do token, nunca do payload ou do texto."""
+    principal do token, nunca do payload ou do texto. `plan` e `selected_terminal` retomam um
+    esclarecimento resolvido pelo servidor: o Router não roda de novo."""
     started = time.perf_counter()
     s = deps.settings
     ctx = RequestContext(
@@ -248,6 +273,7 @@ async def handle_chat(
         user_id=req.customer_id,
         message=req.message,
         scopes=req.principal.scopes,
+        selected_terminal_id=selected_terminal,
         clock=deps.clock,
         budget=Budget(
             max_llm_calls=s.max_llm_calls,
@@ -256,21 +282,25 @@ async def handle_chat(
             deadline_seconds=s.deadline_seconds,
         ),
     )
-    try:
-        plan = await asyncio.wait_for(
-            route(deps.llm, ctx, req.message), timeout=max(ctx.budget.remaining_seconds(), 0.001)
-        )
-    except TimeoutError as exc:
-        if not _deadline_hit(ctx):
-            raise
-        raise DeadlineExceeded("request deadline reached") from exc
-    log_event("route", request_id=ctx.request_id, workflow=plan.workflow)
+    routed = plan is None
+    if plan is None:
+        try:
+            plan = await asyncio.wait_for(
+                route(deps.llm, ctx, req.message, history),
+                timeout=max(ctx.budget.remaining_seconds(), 0.001),
+            )
+        except TimeoutError as exc:
+            if not _deadline_hit(ctx):
+                raise
+            raise DeadlineExceeded("request deadline reached") from exc
+        log_event("route", request_id=ctx.request_id, workflow=plan.workflow)
 
-    run = _Run(ctx, deps)
     if plan.workflow == "clarify":
-        return _finish(
+        response = _finish(
             ctx, deps, plan, started, "needs_clarification", plan.clarification or "", []
         )
+        return _outcome(ctx, plan, response, routed)
+    run = _Run(ctx, deps)
     await _run_workflow(plan, run)
     if not run.results:
         log_event(
@@ -285,7 +315,30 @@ async def handle_chat(
     answer = _compose(run.results, run.failures)
     if _needs_handoff(plan, run):
         status, answer = "handoff_recommended", f"{answer}\n\n{_HANDOFF_NOTE}"
-    return _finish(ctx, deps, plan, started, status, answer, run.results)
+    response = _finish(ctx, deps, plan, started, status, answer, run.results)
+    return _outcome(ctx, plan, response, routed)
+
+
+def _outcome(
+    ctx: RequestContext, plan: RoutePlan, response: ChatResponse, routed: bool
+) -> ChatOutcome:
+    if not routed:
+        response.agents_used = [a for a in response.agents_used if a != "router"]
+    options = next(
+        (
+            list(r.data["options"])
+            for r in reversed(ctx.tool_results)
+            if r.status == "needs_clarification" and r.data.get("options")
+        ),
+        [],
+    )
+    return ChatOutcome(
+        response=response,
+        plan=plan,
+        terminal_options=options,
+        llm_calls=ctx.budget.llm_calls,
+        tool_calls=ctx.budget.tool_calls,
+    )
 
 
 def _needs_handoff(plan: RoutePlan, run: _Run) -> bool:

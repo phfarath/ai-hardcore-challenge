@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Header, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -21,10 +21,16 @@ from app.context import (
     SystemClock,
     VerificationUnavailable,
 )
+from app.conversations import (
+    IdempotencyConflict,
+    RequestInProgress,
+    authorize_conversation,
+    conversation_view,
+    handle_turn,
+)
 from app.deps import Deps
 from app.llm import OpenAIClient
 from app.observability import configure_logging, log_event
-from app.orchestrator import handle_chat
 from app.policies import (
     CustomerSelectionRequired,
     Forbidden,
@@ -35,6 +41,7 @@ from app.policies import (
 from app.rag import KnowledgeIndex, OpenAIEmbedder
 from app.repositories import JsonCustomerRepository
 from app.schemas import ChatRequest, ChatResponse
+from app.state import ConversationBusy, ConversationConflict, SqliteStateStore
 from app.tools.search import TavilySearch
 
 
@@ -72,6 +79,7 @@ def build_deps(settings: Settings | None = None) -> Deps:
         settings=settings,
         auth=auth,
         dev_issuer=dev_issuer,
+        state=SqliteStateStore(settings.state_path),
     )
 
 
@@ -129,6 +137,22 @@ def create_app(deps: Deps | None = None) -> FastAPI:
     async def _selection(_: Request, __: CustomerSelectionRequired) -> JSONResponse:
         return error(400, "customer_selection_required")
 
+    @app.exception_handler(IdempotencyConflict)
+    async def _idempotency(_: Request, __: IdempotencyConflict) -> JSONResponse:
+        return error(409, "idempotency_key_reused")
+
+    @app.exception_handler(RequestInProgress)
+    async def _in_progress(_: Request, __: RequestInProgress) -> JSONResponse:
+        return error(409, "request_in_progress")
+
+    @app.exception_handler(ConversationBusy)
+    async def _busy(_: Request, __: ConversationBusy) -> JSONResponse:
+        return error(409, "conversation_busy")
+
+    @app.exception_handler(ConversationConflict)
+    async def _conflict(_: Request, __: ConversationConflict) -> JSONResponse:
+        return error(409, "conversation_conflict")
+
     @app.exception_handler(ProviderUnavailable)
     async def _llm_down(_: Request, exc: ProviderUnavailable) -> JSONResponse:
         log_event("request_failed", error_code="ProviderUnavailable", detail=str(exc))
@@ -169,11 +193,32 @@ def create_app(deps: Deps | None = None) -> FastAPI:
 
     @app.post("/chat", response_model=ChatResponse)
     async def chat(
-        req: ChatRequest, principal: Annotated[Principal, Depends(current_principal)]
+        req: ChatRequest,
+        principal: Annotated[Principal, Depends(current_principal)],
+        idempotency_key: Annotated[str | None, Header(max_length=128)] = None,
     ) -> ChatResponse:
         # autorização antes do Router: recusa aqui não gasta nenhuma chamada ao LLM
         authorized = authorize_chat(principal, req.message, req.user_id)
-        return await handle_chat(authorized, app.state.deps)
+        return await handle_turn(
+            authorized,
+            app.state.deps,
+            conversation_id=req.conversation_id,
+            idempotency_key=idempotency_key,
+        )
+
+    @app.get("/conversations/{conversation_id}")
+    async def get_conversation(
+        conversation_id: str,
+        principal: Annotated[Principal, Depends(current_principal)],
+        user_id: str | None = None,
+    ) -> dict[str, object]:
+        deps = app.state.deps
+        authorized = authorize_chat(principal, "-", user_id)
+        now = deps.clock.now().timestamp()
+        conversation = authorize_conversation(
+            deps.state.get_conversation(conversation_id), authorized, now
+        )
+        return conversation_view(deps.state.messages(conversation.id), conversation)
 
     @app.post("/dev/token")
     async def dev_token(req: DevTokenRequest) -> dict[str, str]:

@@ -25,6 +25,7 @@ from app.policies import (
 from app.rag import KnowledgeIndex, chunk_document
 from app.repositories import JsonCustomerRepository
 from app.schemas import Claim, ClaimVerdict, KnowledgeOutput, VerificationOutput
+from app.state import SqliteStateStore
 from app.tools.search import WebResult
 
 _call_ids = itertools.count(1)
@@ -36,6 +37,9 @@ class FrozenClock:
 
     def now(self) -> datetime:
         return self._dt
+
+    def advance(self, **delta: float) -> None:
+        self._dt += timedelta(**delta)
 
 
 class ScriptedLLM:
@@ -150,6 +154,7 @@ async def make_deps(
         clock=clock or FrozenClock(),
         settings=Settings(_env_file=None, **settings_overrides),  # type: ignore[call-arg]
         auth=dev_auth()[0],
+        state=SqliteStateStore(tmp_path / "state.db"),
         dev_issuer=dev_auth()[1],
     )
 

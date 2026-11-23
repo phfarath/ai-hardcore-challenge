@@ -52,6 +52,8 @@ def build_customer_tools(repo: CustomerRepository) -> list[ToolSpec]:
         if not terminals:
             return ToolResult(status="empty", data={"data_mode": "demo"})
         chosen = [t for t in terminals if t.id == args.terminal_id]
+        if not chosen and ctx.selected_terminal_id is not None:
+            chosen = [t for t in terminals if t.id == ctx.selected_terminal_id]
         if not chosen and len(terminals) == 1 and args.terminal_id is None:
             chosen = terminals
         if not chosen:
@@ -106,6 +108,18 @@ def _money(amount: str, currency: str) -> str:
 
 def _br_date(iso: str) -> str:
     return date.fromisoformat(iso).strftime("%d/%m/%Y")
+
+
+def format_terminal_options(options: list[str]) -> str:
+    """Lista numerada na ordem guardada pelo servidor: é a ordem que "o segundo" usa."""
+    lines = "\n".join(f"{i}. {terminal_id}" for i, terminal_id in enumerate(options, 1))
+    return (
+        f"Terminais encontrados:\n{lines}\nResponda com o número da lista ou o código do terminal."
+    )
+
+
+def render_terminal_options(result: ToolResult) -> str:
+    return format_terminal_options(list(result.data["options"]))
 
 
 def render_receivables(result: ToolResult) -> str:

@@ -8,6 +8,7 @@ from app.context import Clock
 from app.llm import LLMClient
 from app.rag import KnowledgeIndex
 from app.repositories import CustomerRepository
+from app.state import StateStore
 from app.tools.search import SearchProvider
 
 
@@ -20,4 +21,5 @@ class Deps:
     clock: Clock
     settings: Settings
     auth: Authenticator
+    state: StateStore
     dev_issuer: DevIssuer | None = None

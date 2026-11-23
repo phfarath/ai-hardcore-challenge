@@ -23,6 +23,8 @@ class ChatRequest(BaseModel):
     # seletor do estabelecimento, confrontado com o principal do token; omitido = o único
     # estabelecimento do principal. Não autentica.
     user_id: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,64}$")] | None = None
+    # continua uma conversa existente (T04); omitido = nova conversa
+    conversation_id: Annotated[str, StringConstraints(pattern=r"^conv_[a-f0-9]{32}$")] | None = None
 
 
 class Task(BaseModel):
@@ -98,6 +100,9 @@ class ChatResponse(BaseModel):
     data_mode: Literal["demo"] | None = None
     workflow: Workflow | None = None
     tools_used: list[str] = Field(default_factory=list)
+    # estado durável (T04): a conversa continua passando este id; o run identifica o turno
+    conversation_id: str | None = None
+    run_id: str | None = None
 
 
 class Claim(BaseModel):
