@@ -1,0 +1,7 @@
+# python scripts/smoke.py --base-url http://localhost:8011 --require-ready  (commit 6b7df82)
+PASS ready declares checks: {'status': 'ready', 'checks': {'index': 'ready', 'state': 'ok', 'lifecycle': 'running'}}
+PASS ready status code: 200
+PASS state reachable: ok
+PASS chat without token is 401: 401
+PASS foreign customer selector is 403: (403, {'error': 'forbidden'})
+smoke: OK

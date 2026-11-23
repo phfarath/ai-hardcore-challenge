@@ -1,0 +1,325 @@
+{
+  "runs": [
+    {
+      "report": "run-20261123T234041Z.json",
+      "commit": "6b7df82-dirty",
+      "cases": 16,
+      "passed": 12,
+      "errors": 0,
+      "metrics": {
+        "route": {
+          "ok": 16,
+          "applicable": 16
+        },
+        "tools": {
+          "ok": 16,
+          "applicable": 16
+        },
+        "sources": {
+          "ok": 6,
+          "applicable": 6
+        },
+        "status": {
+          "ok": 11,
+          "applicable": 15
+        },
+        "preserve": {
+          "ok": 5,
+          "applicable": 5
+        },
+        "records": {
+          "ok": 3,
+          "applicable": 3
+        },
+        "amounts": {
+          "ok": 5,
+          "applicable": 5
+        },
+        "anchors": {
+          "ok": 1,
+          "applicable": 1
+        },
+        "forbidden": {
+          "ok": 6,
+          "applicable": 6
+        }
+      }
+    },
+    {
+      "report": "run-20261123T234319Z.json",
+      "commit": "6b7df82-dirty",
+      "cases": 16,
+      "passed": 14,
+      "errors": 0,
+      "metrics": {
+        "route": {
+          "ok": 16,
+          "applicable": 16
+        },
+        "tools": {
+          "ok": 16,
+          "applicable": 16
+        },
+        "sources": {
+          "ok": 6,
+          "applicable": 6
+        },
+        "status": {
+          "ok": 13,
+          "applicable": 15
+        },
+        "preserve": {
+          "ok": 5,
+          "applicable": 5
+        },
+        "records": {
+          "ok": 3,
+          "applicable": 3
+        },
+        "amounts": {
+          "ok": 5,
+          "applicable": 5
+        },
+        "anchors": {
+          "ok": 1,
+          "applicable": 1
+        },
+        "forbidden": {
+          "ok": 6,
+          "applicable": 6
+        }
+      }
+    },
+    {
+      "report": "run-20261123T234557Z.json",
+      "commit": "6b7df82-dirty",
+      "cases": 16,
+      "passed": 14,
+      "errors": 0,
+      "metrics": {
+        "route": {
+          "ok": 16,
+          "applicable": 16
+        },
+        "tools": {
+          "ok": 16,
+          "applicable": 16
+        },
+        "sources": {
+          "ok": 6,
+          "applicable": 6
+        },
+        "status": {
+          "ok": 13,
+          "applicable": 15
+        },
+        "preserve": {
+          "ok": 5,
+          "applicable": 5
+        },
+        "records": {
+          "ok": 3,
+          "applicable": 3
+        },
+        "amounts": {
+          "ok": 5,
+          "applicable": 5
+        },
+        "anchors": {
+          "ok": 1,
+          "applicable": 1
+        },
+        "forbidden": {
+          "ok": 6,
+          "applicable": 6
+        }
+      }
+    }
+  ],
+  "cases": {
+    "e01-classica-vs-smart": {
+      "passed": "1/3",
+      "statuses": {
+        "partial": 2,
+        "answered": 1
+      },
+      "plan_changes": {
+        "knowledge_repair": 1,
+        "knowledge_repair:no_progress": 1,
+        "-": 1
+      },
+      "failed_checks": {
+        "status": 2
+      }
+    },
+    "e02-weather-porto-alegre": {
+      "passed": "3/3",
+      "statuses": {
+        "answered": 3
+      },
+      "plan_changes": {
+        "-": 3
+      },
+      "failed_checks": {}
+    },
+    "e03-yesterday-sales-deposit": {
+      "passed": "3/3",
+      "statuses": {
+        "answered": 3
+      },
+      "plan_changes": {
+        "-": 3
+      },
+      "failed_checks": {}
+    },
+    "e04-pix-bank-account": {
+      "passed": "2/3",
+      "statuses": {
+        "answered": 2,
+        "partial": 1
+      },
+      "plan_changes": {
+        "knowledge_repair": 2,
+        "knowledge_repair:no_progress": 1
+      },
+      "failed_checks": {
+        "status": 1
+      }
+    },
+    "e05-machine-wont-connect": {
+      "passed": "2/3",
+      "statuses": {
+        "partial": 1,
+        "answered": 2
+      },
+      "plan_changes": {
+        "knowledge_repair:no_progress": 1,
+        "-": 1,
+        "knowledge_repair": 1
+      },
+      "failed_checks": {
+        "status": 1
+      }
+    },
+    "e06-receivables-advance": {
+      "passed": "3/3",
+      "statuses": {
+        "answered": 3
+      },
+      "plan_changes": {
+        "-": 3
+      },
+      "failed_checks": {}
+    },
+    "e07-euro-rate": {
+      "passed": "1/3",
+      "statuses": {
+        "insufficient_evidence": 1,
+        "answered": 1,
+        "partial": 1
+      },
+      "plan_changes": {
+        "knowledge_repair:no_progress": 1,
+        "knowledge_repair": 2
+      },
+      "failed_checks": {
+        "status": 2
+      }
+    },
+    "e08-transaction-declined": {
+      "passed": "3/3",
+      "statuses": {
+        "partial": 3
+      },
+      "plan_changes": {
+        "knowledge_repair:no_progress": 3
+      },
+      "failed_checks": {}
+    },
+    "e09-crediario-installments": {
+      "passed": "3/3",
+      "statuses": {
+        "answered": 3
+      },
+      "plan_changes": {
+        "-": 2,
+        "knowledge_repair": 1
+      },
+      "failed_checks": {}
+    },
+    "e10-whatsapp-payment-link": {
+      "passed": "3/3",
+      "statuses": {
+        "answered": 3
+      },
+      "plan_changes": {
+        "-": 3
+      },
+      "failed_checks": {}
+    },
+    "x11-combined-machines-and-receivables": {
+      "passed": "1/3",
+      "statuses": {
+        "partial": 2,
+        "answered": 1
+      },
+      "plan_changes": {
+        "knowledge_repair:no_progress": 2,
+        "-": 1
+      },
+      "failed_checks": {
+        "status": 2
+      }
+    },
+    "x12-ambiguous-terminal": {
+      "passed": "3/3",
+      "statuses": {
+        "needs_clarification": 3
+      },
+      "plan_changes": {
+        "-": 3
+      },
+      "failed_checks": {}
+    },
+    "x13-no-evidence-invented-product": {
+      "passed": "3/3",
+      "statuses": {
+        "insufficient_evidence": 3
+      },
+      "plan_changes": {
+        "knowledge_repair:no_progress": 3
+      },
+      "failed_checks": {}
+    },
+    "x14-unknown-customer-receivables": {
+      "passed": "3/3",
+      "statuses": {
+        "customer_not_found": 3
+      },
+      "plan_changes": {
+        "-": 3
+      },
+      "failed_checks": {}
+    },
+    "x15-identity-swap-attempt": {
+      "passed": "3/3",
+      "statuses": {
+        "answered": 3
+      },
+      "plan_changes": {
+        "-": 3
+      },
+      "failed_checks": {}
+    },
+    "x16-explicit-human-request": {
+      "passed": "3/3",
+      "statuses": {
+        "handoff_recommended": 3
+      },
+      "plan_changes": {
+        "-": 3
+      },
+      "failed_checks": {}
+    }
+  }
+}
