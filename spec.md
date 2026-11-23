@@ -105,12 +105,22 @@ Agentes se comunicam por **objetos Pydantic passados entre funções**. Validaç
 - Fora do escopo desta etapa: checkpoints por passo e worker de recuperação; um turno interrompido é refeito por inteiro pela mesma chave.
 
 ### 4.10 Atendimento humano: caso, operador e retomada (T05)
-- Gatilho: em `support_then_knowledge`, diagnóstico com problema e nenhuma orientação oficial. Pelo `/chat` durável, se o principal tem `handoffs:create`, o turno abre um caso interno real (`handoffs`) na mesma transação que grava a resposta: a resposta traz o id do caso, `status=handoff_recommended` (qualidade da resposta), `run_status=awaiting_operator` (andamento) e `handoff_id`. Sem o escopo, fica só a recomendação. Repetição idempotente do turno não abre um segundo caso.
+- Gatilhos: (a) em `support_then_knowledge` (ou `support` com orientação adicionada, §4.11), diagnóstico com problema e nenhuma orientação oficial, mesmo depois da reparação; (b) pedido explícito do cliente por atendimento humano (fluxo `handoff`). Pelo `/chat` durável, se o principal tem `handoffs:create`, o turno abre um caso interno real (`handoffs`) na mesma transação que grava a resposta: a resposta traz o id do caso, `status=handoff_recommended` (qualidade da resposta), `run_status=awaiting_operator` (andamento) e `handoff_id`. Sem o escopo, fica só a recomendação. Repetição idempotente do turno não abre um segundo caso.
 - Snapshot para o operador: pergunta, contexto técnico público (modelo, problema, código), lacuna e ids de fontes; sem valores nem identificadores de recebíveis.
 - Operador (`role=operator`, mesmo tenant): `GET /operator/handoffs` (fila, `handoffs:read`), `GET /operator/handoffs/{id}`, `POST .../claim {expected_version}` e `POST .../resolve {decision_type: reply|no_action, content, justification, expected_version}` (`handoffs:resolve`). Assumir exige estado `pending` e a versão vista; decidir exige ser o responsável, estado `assigned`, versão atual e prazo vigente (`HANDOFF_TTL_HOURS`, padrão 24 h). Conflito → 409 `handoff_conflict`; vencido → 409 `handoff_expired`; outro tenant → 404; sem papel ou escopo → 403.
 - A decisão e o evento de retomada (`resume_events`, um por caso) são gravados na mesma transação. Um worker do próprio processo consome o evento com lease, revalida que o dono da conversa ainda acessa o cliente e grava a mensagem final na conversa, o estado `completed` do caso e o evento concluído numa transação. Worker que cai após pegar o evento: a lease vence e outro ciclo entrega, uma vez só. Acesso revogado → caso `cancelled`, nada é entregue.
 - A mensagem final identifica a resposta como do atendimento humano; não altera dados da conta nem vira fato oficial. O cliente acompanha por `GET /conversations/{id}` e `GET /handoffs/{id}` (`handoffs:read`, só o próprio caso).
 - Auditoria (`audit_events`): criação, assunção, decisão e retomada, com ator, resultado e correlação (run ou evento).
+
+### 4.11 Observar e replanejar dentro do orçamento (T07)
+O plano do Router é o ponto de partida. Depois de cada etapa o orquestrador observa o resultado e pode mudar o plano **uma vez por pedido** (`MAX_REPLANS`, padrão 1), por evidência nova (`app/replanning.py`):
+- `knowledge_repair`: o verificador apontou lacunas (`partial`) ou nada foi sustentado (`insufficient_evidence`). Uma nova tentativa do Knowledge mira só as lacunas, com outra formulação de consulta, e é verificada contra elas. Progresso = evidência sustentada que ainda não existia: o resultado é unido ao anterior (status `answered` se as lacunas sumiram). Sem fonte nova → `knowledge_repair:no_progress`, o resultado anterior fica e o pedido termina com o que já foi comprovado. Falha na reparação (provedor, verificador, prazo) → `knowledge_repair:failed`, sem apagar o comprovado nem virar pendência.
+- `guidance_added`: num plano só `support`, o diagnóstico trouxe um código de erro ou de recusa; entra uma busca de orientação oficial (só fontes Getnet, sem web) com o contexto técnico público. Sem orientação, vale a regra de escalonamento da §4.10.
+- Reserva para concluir: uma mudança só começa se restarem ao menos `REPLAN_MIN_LLM_CALLS` (padrão 3: ferramenta, resposta e verificação) e `REPLAN_MIN_SECONDS` (padrão 15 s). A composição final é determinística e não consome LLM.
+- Retry de provedor (mesma chamada, erro transitório) é do cliente LLM e não conta como replanejamento; replanejamento é uma estratégia nova, decidida pelo código depois de uma observação.
+- Sem ampliar permissões: a reparação mantém o `source_scope` da tarefa; a orientação adicionada é sempre `getnet`; as ferramentas continuam filtradas pelos escopos do principal. Um plano salvo retomado após esclarecimento carrega o contador (`replans_used`) na pendência e é executado com os escopos do token atual.
+- A resposta traz `plan_changes` (ex.: `["knowledge_repair"]`); cada decisão gera o evento de log `replan` (decisão, resultado, contador, chamadas LLM).
+- Pedido explícito de atendimento humano ("quero falar com um atendente") é o fluxo `handoff` do Router, sem tarefas: abre o caso (motivo `customer_requested_human`) se o principal tem `handoffs:create`; senão, só orienta.
 
 ### 4.2 Router
 Saída estruturada validada pelo executor: fluxo na lista permitida, ≤2 tarefas, agentes existentes, sequência coerente com o fluxo. Plano inválido → uma nova tentativa dentro do orçamento; persistindo, `clarify`/erro tratado. Extrai subperguntas em mensagens compostas.
@@ -141,7 +151,7 @@ O Router marca na tarefa support o `diagnostic_goal` (`connectivity`, `transacti
 Duas subperguntas independentes, executadas em sequência; composição em duas seções. Se um ramo falha, retorna a parte válida com `status="partial"` e informa a pendência.
 
 ### 4.7 Limites por requisição (configuráveis)
-Especialistas ≤2; chamadas LLM ≤8 (incluindo retry e verificação); ferramentas ≤4; buscas web ≤1; retry transitório 1; deadline total 30–45 s. O Knowledge reserva 1 chamada para a verificação antes do loop de ferramentas, que não pode consumi-la. Valores iniciais de engenharia, não medidos.
+Especialistas ≤2 por plano (+1 tarefa de replanejamento, §4.11); chamadas LLM ≤10 (incluindo retry, verificação e replanejamento); ferramentas ≤5; buscas web ≤2; retry transitório 1; deadline total 30–45 s. O Knowledge reserva 1 chamada para a verificação antes do loop de ferramentas, que não pode consumi-la. Valores iniciais de engenharia, não medidos.
 
 ## 5. RAG
 
