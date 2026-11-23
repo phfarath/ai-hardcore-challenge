@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     auth_issuer: str = ""
     auth_jwks_url: str = ""
 
+    state_path: str = "state_data/state.db"
+    # retenção configurável; não é um prazo regulatório validado
+    conversation_retention_hours: int = 72
+    pending_choice_minutes: int = 15
+
     max_llm_calls: int = 8
     max_tool_calls: int = 4
     max_web_searches: int = 1
