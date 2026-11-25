@@ -42,4 +42,4 @@ jobs:
       - name: Graceful shutdown on SIGTERM
         run: |
           docker stop -t 25 api
-          docker logs api | grep '"event": "shutdown"'
+          docker logs api 2>&1 | grep '"event": "shutdown"'  # a app loga no stderr
