@@ -13,7 +13,8 @@ Status = Literal[
     "partial",
     "needs_clarification",
     "insufficient_evidence",
-    "handoff_recommended",
+    "handoff_recommended",  # só orientação: nenhum caso foi aberto
+    "handoff_opened",  # caso real na fila do operador (`handoff_id`, `awaiting_operator`)
     "customer_not_found",
 ]
 EvidenceType = Literal["kb_chunk", "web_result", "customer_record"]

@@ -92,7 +92,7 @@ async def _claim_and_resolve(deps: Deps, handoff_id: str, content: str = "Troque
 async def test_full_cycle_open_claim_resolve_restart_resume(tmp_path: Path) -> None:
     deps, body = await _open_case(tmp_path)
     handoff_id = body["handoff_id"]
-    assert body["status"] == "handoff_recommended"
+    assert body["status"] == "handoff_opened"
     assert body["run_status"] == "awaiting_operator"
     assert handoff_id and handoff_id in body["answer"]
     assert "nenhum atendimento foi aberto" not in body["answer"].lower()

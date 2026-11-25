@@ -95,6 +95,11 @@ _STATUS_PRIORITY: list[Status] = [
 ]
 
 
+def _handoff_status(handoff_id: str | None) -> Status:
+    """Com id o caso é aberto na mesma transação do turno; sem ele é só recomendação."""
+    return "handoff_opened" if handoff_id else "handoff_recommended"
+
+
 def _deadline_hit(ctx: RequestContext) -> bool:
     """Distingue o estouro do nosso prazo de um TimeoutError qualquer vindo de dentro."""
     return ctx.budget.remaining_seconds() <= 0.01
@@ -440,7 +445,7 @@ async def run_chat(
         note = (
             _HUMAN_REQUESTED_OPENED.format(id=handoff_id) if handoff_id else _HUMAN_REQUESTED_NOTE
         )
-        response = _finish(ctx, deps, plan, started, "handoff_recommended", note, [])
+        response = _finish(ctx, deps, plan, started, _handoff_status(handoff_id), note, [])
         outcome = _outcome(ctx, plan, response, routed)
         outcome.handoff = {
             "reason": "customer_requested_human",
@@ -466,7 +471,7 @@ async def run_chat(
     handoff: dict[str, Any] | None = None
     if _needs_handoff(plan, run):
         note = _HANDOFF_OPENED.format(id=handoff_id) if handoff_id else _HANDOFF_NOTE
-        status, answer = "handoff_recommended", f"{answer}\n\n{note}"
+        status, answer = _handoff_status(handoff_id), f"{answer}\n\n{note}"
         handoff = {
             "reason": "diagnosed_issue_without_official_guidance",
             "question": req.message,

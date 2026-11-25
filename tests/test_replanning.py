@@ -258,7 +258,7 @@ async def test_explicit_request_for_a_human_opens_a_case(tmp_path: Path) -> None
         deps, "POST", "/chat", "user-a", {"message": "Quero falar com um atendente."}
     )
     body = response.json()
-    assert body["status"] == "handoff_recommended"
+    assert body["status"] == "handoff_opened"
     assert body["run_status"] == "awaiting_operator"
     assert body["handoff_id"] and body["handoff_id"] in body["answer"]
     assert body["agents_used"] == ["router"]
@@ -310,7 +310,7 @@ async def test_escalation_still_happens_after_a_repair_without_progress(tmp_path
         await _api(deps, "POST", "/chat", "user-a", {"message": "Minha maquininha não conecta."})
     ).json()
     assert body["plan_changes"] == ["knowledge_repair:no_progress"]
-    assert body["status"] == "handoff_recommended"
+    assert body["status"] == "handoff_opened"
     assert body["handoff_id"] is not None
 
 
@@ -362,7 +362,6 @@ async def test_partial_repair_is_appended_without_a_second_header(tmp_path: Path
     assert "prazo de visita técnica" in response.answer
 
 
-@pytest.mark.xfail(strict=True, reason="status ainda não distingue caso aberto de recomendação")
 async def test_status_says_whether_a_case_was_opened_or_only_recommended(tmp_path: Path) -> None:
     """Caso real: `handoff_opened` + `handoff_id` + `awaiting_operator`. Sem escopo para abrir
     caso: `handoff_recommended`, sem id, turno concluído."""

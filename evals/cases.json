@@ -367,7 +367,7 @@
     "allowed_tools": [],
     "ordered": false,
     "expected_source_urls_any": null,
-    "expected_status": "handoff_recommended",
+    "expected_status": "handoff_opened",
     "must_preserve": [],
     "must_preserve_records": [],
     "allowed_amounts": [],
