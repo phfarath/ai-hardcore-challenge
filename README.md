@@ -279,7 +279,7 @@ Todo o código, os testes, a documentação e as revisões foram feitos com **um
 
 O que **não** foi entregue ou tem limite conhecido (cada item foi observado, não suposto):
 
-- **Recuperação não medida formalmente** (gap 7 do feedback): não há Recall@K, MRR nem ablações; o índice é o mesmo da v1 (25 páginas, 41 chunks).
+- **Recuperação medida, não melhorada** (gap 7 do feedback): em 27 consultas rotuladas, Recall@5 0,91 e MRR 0,87, mas consultas em inglês recuperam pior (0,78) e a FAQ ocupa a maior parte do top 5 ([métricas](docs/evidence/retrieval-labeling.md)). O índice é o mesmo da v1 (25 páginas, 41 chunks), e a rotulagem não teve segundo revisor.
 - **Avaliação semântica não independente**: a revisão das 48 respostas foi feita pelo agente que implementou; não há juiz calibrado com humanos.
 - **Variação do verificador**: a nota oscila entre 12 e 14 de 16 no mesmo commit, sempre para `partial`/`insufficient_evidence`, nunca liberando texto sem fonte.
 - **Defeitos registrados na revisão semântica**: a fonte não é checada quanto à data (D1); idiomas se misturam em respostas reparadas e nas notas de lacuna (D2); as seções de Suporte e Conhecimento não reconciliam o texto livre (D3); a junção do reparo pode manter um dado datado mais antigo (D4); as pendências do modelo repetem a nota de lacuna (D5).

@@ -25,7 +25,7 @@ Testes padrão não usam rede nem chaves. Os que usam serviços reais têm `@pyt
 | `app/repositories.py` | `CustomerRepository` + fixtures JSON (`data/fixtures/`) |
 | `app/schemas.py`, `app/context.py` | contratos Pydantic; `RequestContext`, `Budget`, exceções |
 | `tests/fakes.py` | `ScriptedLLM`, `FakeEmbedder`, `FakeSearch`, `FrozenClock`, `make_deps` |
-| `evals/` | casos e runner de avaliação de IA (exige API e chaves) |
+| `evals/` | casos e runner de avaliação de IA (exige API e chaves); `retrieval_metrics.py` mede a recuperação do índice |
 | `scripts/smoke.py` | smoke contra um container no ar (usado no CI sobre a imagem construída) |
 
 ## Regras
