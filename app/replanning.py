@@ -16,18 +16,25 @@ ferramentas continuam filtradas pelos escopos do principal.
 
 from dataclasses import dataclass
 
-from app.agents.knowledge import VERIFIED_HEADER
+from app.agents.knowledge import split_header
 from app.context import RequestContext
+from app.language import Language
 from app.schemas import AgentResult, Status, Task
 
 KNOWLEDGE_REPAIR = "knowledge_repair"
 GUIDANCE_ADDED = "guidance_added"
 NO_PROGRESS = "no_progress"
 
-REPAIR_HINT = (
-    "Uma busca anterior não encontrou evidência para estas partes. Procure só por elas, com "
-    "outra formulação de consulta: {gaps}"
-)
+REPAIR_HINT: dict[Language, str] = {
+    "pt": (
+        "Uma busca anterior não encontrou evidência para estas partes. Procure só por elas, com "
+        "outra formulação de consulta: {gaps}"
+    ),
+    "en": (
+        "A previous search found no evidence for these parts. Search only for them, with a "
+        "different query wording: {gaps}"
+    ),
+}
 _GUIDANCE_QUESTION = (
     "Qual a orientação oficial da Getnet para o problema observado no terminal ({issue}{code})?"
 )
@@ -50,11 +57,12 @@ class ReplanPolicy:
         )
 
 
-def repair_task(task: Task, gaps: list[str]) -> tuple[Task, str]:
+def repair_task(task: Task, gaps: list[str], lang: Language = "pt") -> tuple[Task, str]:
     """A pergunta passa a ser só as lacunas (é contra elas que o verificador julga); o escopo
     de fontes é o da tarefa original e nunca se alarga."""
     question = "; ".join(g.strip().rstrip(".") for g in gaps)
-    return task.model_copy(update={"question": question}), REPAIR_HINT.format(gaps=question)
+    hint = REPAIR_HINT[lang].format(gaps=question)
+    return task.model_copy(update={"question": question}), hint
 
 
 def guidance_task(technical: dict[str, str]) -> Task | None:
@@ -81,9 +89,7 @@ def merge_repair(before: AgentResult, after: AgentResult) -> AgentResult:
     evidence = {e.id: e for e in [*before.evidence, *after.evidence]}
     status: Status = "answered" if not after.gaps else "partial"
     # a continuação não repete o cabeçalho: o assunto já está na primeira parte
-    continuation = after.answer
-    if continuation.startswith(VERIFIED_HEADER.split("{")[0]):
-        continuation = continuation.split("\n\n", 1)[-1]
+    _, continuation = split_header(after.answer)
     return AgentResult(
         agent=before.agent,
         status=status,

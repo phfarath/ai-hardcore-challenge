@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from app.language import detect_language
 from app.llm import LLMTurn
 from app.orchestrator import handle_chat
 from app.schemas import RoutePlan, Task
@@ -44,7 +45,6 @@ def _plan(question: str, scope: str = "getnet") -> LLMTurn:
     )
 
 
-@pytest.mark.xfail(strict=True, reason="D2: textos fixos só em português")
 async def test_d2_english_question_gets_no_portuguese_template_text(tmp_path: Path) -> None:
     """Pergunta em inglês com lacuna, reparo e lacuna restante: nenhum texto fixo em português,
     nem na resposta nem na dica de reparo enviada ao modelo."""
@@ -84,6 +84,21 @@ async def test_d2_english_question_gets_no_portuguese_template_text(tmp_path: Pa
     repair_prompt = llm.calls[4][-1]["content"]
     assert "Uma busca anterior" not in repair_prompt
     assert "different query wording" in repair_prompt
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("What's the difference between the Get Clássica and the Get Smart?", "en"),
+        ("How does receivables advance (antecipação) work with Getnet?", "en"),
+        ("My card machine is showing a transaction decline error.", "en"),
+        ("Qual é a taxa da maquininha Getnet Quantum 9000?", "pt"),
+        ("Minha maquininha não conecta.", "pt"),
+        ("Pix", "pt"),  # sem pistas: idioma padrão do atendimento
+    ],
+)
+def test_d2_language_detection(message: str, expected: str) -> None:
+    assert detect_language(message) == expected
 
 
 XE_URL = "https://www.xe.com/currencyconverter/convert/?From=EUR&To=BRL"

@@ -24,6 +24,7 @@ from app.context import (
     VerificationUnavailable,
 )
 from app.deps import Deps
+from app.language import Language, detect_language
 from app.llm import ToolSpec
 from app.observability import log_event
 from app.policies import AuthorizedChat, InsufficientScope
@@ -65,7 +66,11 @@ _REASONS: dict[type[Exception], str] = {
     IndexUnavailable: "a base de conhecimento está indisponível",
     VerificationUnavailable: "a verificação das fontes não pôde ser concluída",
 }
-_LABELS = {"customer_support": "Suporte ao cliente", "knowledge": "Conhecimento"}
+_LABELS: dict[Language, dict[str, str]] = {
+    "pt": {"customer_support": "Suporte ao cliente", "knowledge": "Conhecimento"},
+    "en": {"customer_support": "Customer support", "knowledge": "Knowledge"},
+}
+_PENDING: dict[Language, str] = {"pt": "Pendências: {items}.", "en": "Pending: {items}."}
 _HANDOFF_OPENED = (
     "Como não encontrei orientação oficial para este problema, abri o caso interno {id} para a "
     "equipe de atendimento. A resposta do atendente aparecerá nesta conversa."
@@ -156,6 +161,7 @@ class _Run:
         self.customer_tools: list[ToolSpec] = build_customer_tools(deps.repo)
         self.knowledge_tools: list[ToolSpec] = build_knowledge_tools(deps.index, deps.search)
         self.diagnostic_goal: DiagnosticGoal = "general"
+        self.lang: Language = detect_language(ctx.message)
 
     @property
     def stop(self) -> bool:
@@ -232,7 +238,7 @@ class _Run:
         if self.stop or not self.policy.affordable(self.ctx, self.replans_used):
             return
         self.replans_used += 1
-        repaired, hint = repair_task(task, first.gaps)
+        repaired, hint = repair_task(task, first.gaps, self.lang)
         try:
             after = await self._call(
                 lambda: run_knowledge(
@@ -302,17 +308,20 @@ async def _run_workflow(plan: RoutePlan, run: _Run) -> None:
             await (run.support(task) if task.agent == "support" else run.knowledge(task))
 
 
-def _text(result: AgentResult) -> str:
+def _text(result: AgentResult, lang: Language) -> str:
     if result.status == "partial" and result.gaps:
-        return f"{result.answer}\n{gap_note(result.gaps)}"
+        return f"{result.answer}\n{gap_note(result.gaps, lang)}"
     return result.answer
 
 
-def _compose(results: list[AgentResult], failures: list[tuple[str, Exception]]) -> str:
+def _compose(
+    results: list[AgentResult], failures: list[tuple[str, Exception]], lang: Language = "pt"
+) -> str:
+    labels = _LABELS[lang]
     if len(results) == 1:
-        body = _text(results[0])
+        body = _text(results[0], lang)
     else:
-        body = "\n\n".join(f"**{_LABELS.get(r.agent, r.agent)}**\n{_text(r)}" for r in results)
+        body = "\n\n".join(f"**{labels.get(r.agent, r.agent)}**\n{_text(r, lang)}" for r in results)
     notes = [
         f"Pendência: a parte de {label} não pôde ser concluída porque "
         f"{_REASONS.get(type(exc), 'ocorreu um erro')}."
@@ -320,7 +329,7 @@ def _compose(results: list[AgentResult], failures: list[tuple[str, Exception]]) 
     ]
     pending = [p for r in results for p in r.pending]
     if pending:
-        notes.insert(0, "Pendências: " + "; ".join(pending) + ".")
+        notes.insert(0, _PENDING[lang].format(items="; ".join(pending)))
     return "\n\n".join([body, *notes])
 
 
@@ -429,7 +438,7 @@ async def run_chat(
         raise run.failures[0][1]
 
     status: Status = "partial" if run.failures else merge_status(run.results)
-    answer = _compose(run.results, run.failures)
+    answer = _compose(run.results, run.failures, run.lang)
     handoff: dict[str, Any] | None = None
     if _needs_handoff(plan, run):
         note = _HANDOFF_OPENED.format(id=handoff_id) if handoff_id else _HANDOFF_NOTE
