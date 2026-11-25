@@ -327,10 +327,28 @@ def _compose(
         f"{_REASONS.get(type(exc), 'ocorreu um erro')}."
         for label, exc in failures
     ]
-    pending = [p for r in results for p in r.pending]
+    pending = _pending_items(results)
     if pending:
         notes.insert(0, _PENDING[lang].format(items="; ".join(pending)))
     return "\n\n".join([body, *notes])
+
+
+def _bare(text: str) -> str:
+    return text.strip().rstrip(".;: ").strip()
+
+
+def _pending_items(results: list[AgentResult]) -> list[str]:
+    """Pendências do modelo sem repetir uma lacuna que já sai na nota de lacuna e sem pontuação
+    final, que o template acrescenta uma vez (D5). A comparação é por igualdade, ignorando
+    maiúsculas e pontuação: uma pendência só parecida continua, para não sumir com algo útil."""
+    noted = {_bare(g).casefold() for r in results if r.status == "partial" for g in r.gaps}
+    items: dict[str, str] = {}
+    for result in results:
+        for item in result.pending:
+            key = _bare(item).casefold()
+            if key and key not in noted:
+                items.setdefault(key, _bare(item))
+    return list(items.values())
 
 
 def _sources(results: list[AgentResult]) -> list[SourceRef]:

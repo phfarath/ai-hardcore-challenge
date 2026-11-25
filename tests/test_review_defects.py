@@ -139,7 +139,6 @@ async def test_d4_repair_with_todays_rate_comes_before_the_stale_one(tmp_path: P
     assert response.answer.count("Based on the sources consulted") <= 1
 
 
-@pytest.mark.xfail(strict=True, reason="D5: pendência repete a lacuna e termina com ponto duplo")
 async def test_d5_pending_does_not_repeat_the_gap_nor_end_with_double_period(
     tmp_path: Path,
 ) -> None:
