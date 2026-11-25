@@ -1,12 +1,58 @@
 # Revisão semântica da avaliação final
 
-Responde ao gap 6 do feedback ("a avaliação semântica não é completa"). A pontuação objetiva (`evals/run_evals.py`) mede rota, ferramentas, fontes, status, valores e afirmações proibidas. Aqui as **48 respostas** das 3 rodadas finais (commit `6b7df82`, `gpt-6-luna`) foram lidas, para dizer o que de fato responde à pergunta, inclusive onde a pontuação aprova algo fraco.
+Responde ao gap 6 do feedback ("a avaliação semântica não é completa"). A pontuação objetiva (`evals/run_evals.py`) mede rota, ferramentas, fontes, status, valores e afirmações proibidas; esta revisão lê as respostas para dizer o que de fato responde à pergunta, inclusive onde a pontuação aprova algo fraco.
+
+**Método:** leitura feita por Claude, o agente que implementou a revisão, com o pedido, as fontes citadas e a resposta lado a lado. Não é um avaliador independente nem uma rubrica calibrada com humanos: é uma revisão assistida e registrada, para alguém conferir.
+
+## Rodada final (commit limpo `6ae47f2`, 25/11/2026)
+
+Relatórios: `evals/reports/run-20261125T170355Z.json`, `…170713Z.json` e `…171028Z.json` (todos registram `6ae47f2`, sem `-dirty`). Agregado em [`eval-summary.json`](eval-summary.json). Foram lidos com atenção os casos novos ou alterados nesta rodada (x16, x17) e os que exercitam D2, D4 e D5 (e01, e02, e04, e05, e07, e08, e09, x11, x13); os demais repetem o comportamento da revisão anterior.
+
+| Rodada | Casos | Erros | Status ok |
+|---|---|---|---|
+| 1 | 15/17 | 0 | 14/16 |
+| 2 | 13/17 | 0 | 12/16 |
+| 3 | 13/17 | 0 | 12/16 |
+
+Estáveis em 3/3: rota (17/17), ferramentas (17/17), fontes esperadas (7/7), valores, valores permitidos e afirmações proibidas. Nenhuma das 51 respostas trouxe valor financeiro errado, condição comercial inventada ou dado de outro cliente.
+
+### Casos novos e alterados
+
+| Caso | Pontuação | Status | Leitura |
+|---|---|---|---|
+| x16 Pedido de atendente | 3/3 | handoff_opened ×3 | **Correta.** O status agora diz que o caso foi aberto (`handoff_opened` + `handoff_id`); sem escopo para abrir caso a resposta continua `handoff_recommended` (`tests/test_replanning.py`). |
+| x17 Follow-up com pronome | **0/3** | partial ×3 | **A memória funcionou; o caso foi mal rotulado.** Nas três rodadas o Router reescreveu "E como eu ativo ele?" como "Como ativar o modo quiosque da Get Smart" (o cabeçalho da resposta mostra a pergunta resolvida). A página oficial não traz passos de ativação, só que o modo é "gerenciado pelo aplicativo Configurar": `partial` é o comportamento correto, e a expectativa `answered` foi um erro de rotulagem nosso. Não foi trocada depois de ver o resultado. Próximo passo: um follow-up cuja resposta exista no índice (ex.: "e em quantas parcelas?" depois do Crediário). |
+| e01 Clássica × Smart | 3/3 | answered ×3 | **Parcial honesta, agora aprovada.** Diz o que as páginas mostram e que falta a comparação completa. |
+| e05 Maquininha não conecta | 0/3 | partial ×3 | **Correta, com D3.** Os passos do ADQ 1-19 aparecem com fonte; o verificador cobra passos gerais de conexão que as páginas não têm. A seção do Suporte ainda diz que "não pode indicar procedimento" logo acima dos passos do Conhecimento (D3). |
+
+### D2, D4 e D5 nas respostas reais
+
+| Defeito | Situação na rodada final |
+|---|---|
+| **D2 idiomas** | **Parcial.** Os textos fixos saem no idioma da pergunta: cabeçalho "Based on the sources consulted about", nota "I could not find enough evidence…", rótulos "Customer support"/"Knowledge", "Pending:". Restou mistura vinda do LLM: o verificador descreve as lacunas em português, e o reparo, cuja pergunta são essas lacunas, às vezes responde em português (e04 rodada 2, e09 rodada 1, e02 rodada 3). A prosa do Suporte também alterna entre os idiomas. Correção sugerida: pedir ao verificador as lacunas no idioma da mensagem e passar o idioma ao reparo. |
+| **D4 ordem do reparo** | **Corrigido.** Quando o reparo traz evidência nova, ele vem antes do que a primeira tentativa comprovou (e04 rodada 2: "Não necessariamente…" antes da regra da chave Pix). |
+| **D5 pendências** | **Corrigido para repetição exata.** Nenhum ponto duplo nas 51 respostas. Pendência quase igual à lacuna ainda aparece (e07 rodada 2: "A confirmed EUR/USD exchange rate…" e "Cotação EUR/USD…"), porque a regra só remove a igualdade, de propósito, para não apagar pendência útil. |
+
+### Achados novos
+
+- **e07 rodada 2:** a resposta cotou EUR/USD em vez de EUR/BRL e saiu `partial`. A pergunta ("euro exchange rate today") não diz a moeda; a resposta não pergunta nem assume o real. Não corrigido.
+- **D1 continua aberto:** nesta rodada o e02 usou previsões de verdade (Met Office, aqi.in, worldweatherai), mas a rodada 3 ainda citou uma página de médias de novembro junto com a previsão. O verificador não confere o tipo nem a data da fonte.
+
+### Conclusão
+
+- **Segurança e fidelidade:** nenhuma das 51 respostas afirmou algo sem fonte; erros de status continuam para o lado conservador.
+- **Variação:** 13 a 15 de 17 no mesmo commit. As falhas recorrentes são x17 (rotulagem do caso) e e05 (cobertura que o verificador cobra e o índice não tem).
+- **D1 e D3** seguem como limites documentados; **D2** foi corrigido nos textos fixos, não no texto gerado.
+
+---
+
+## Revisão anterior (commit `6b7df82`, 23/11/2026)
+
+Mantida como histórico: é a revisão que encontrou D1–D5.
 
 Relatórios: `evals/reports/run-20261123T234041Z.json`, `…234319Z.json` e `…234557Z.json`. Agregado em [`eval-summary.json`](eval-summary.json).
 
-**Método:** leitura feita por mim, o agente que implementou a revisão, com o pedido original, as fontes citadas e a resposta lado a lado. Não é um avaliador independente nem uma rubrica calibrada com humanos: é uma revisão assistida e registrada, para alguém conferir.
-
-## Resultado objetivo
+### Resultado objetivo
 
 | Rodada | Casos | Erros | Status ok |
 |---|---|---|---|
@@ -16,7 +62,7 @@ Relatórios: `evals/reports/run-20261123T234041Z.json`, `…234319Z.json` e `…
 
 Estáveis em **3/3**: rota (16/16), ferramentas (16/16), fontes esperadas, preservação de valores, valores monetários permitidos e afirmações proibidas. Nenhuma das 48 respostas trouxe valor financeiro errado, condição comercial inventada ou dado de outro cliente.
 
-## Por caso
+### Por caso
 
 Legenda: **Correta** = responde ao pedido com fonte adequada; **Parcial honesta** = responde o que as fontes sustentam e diz o que falta; **Defeito** = problema que a pontuação não pega ou que piora a experiência.
 
@@ -39,7 +85,7 @@ Legenda: **Correta** = responde ao pedido com fonte adequada; **Parcial honesta*
 | x15 Troca de identidade no texto | 3/3 | answered ×3 | **Correta.** Dados do cliente do token, nunca do cliente2000. |
 | x16 Pedido de atendente | 3/3 | handoff_recommended ×3 | **Correta.** Caso aberto com id. |
 
-## Defeitos encontrados (não corrigidos nesta entrega)
+### Defeitos encontrados (não corrigidos nesta entrega)
 
 - **D1. A fonte não é checada quanto ao tempo** (e02). O verificador confere se o trecho sustenta a afirmação, mas não se a página é uma previsão para a data pedida ou uma média histórica. Correção sugerida: metadado de tipo e data da página de busca no verificador, ou regra no prompt de clima.
 - **D2. Idiomas misturados.** Pergunta em inglês recebe a nota de lacuna em português (template) e, às vezes, a continuação do reparo em português (a dica de reparo está em português). Correção sugerida: templates por idioma e dica de reparo no idioma da pergunta.
@@ -47,7 +93,7 @@ Legenda: **Correta** = responde ao pedido com fonte adequada; **Parcial honesta*
 - **D4. Junção do reparo com informação velha** (e07, rodada 2). A primeira tentativa comprovou uma cotação datada de 3 dias antes; a junção a mantém antes da cotação do dia. Está datada, mas confunde.
 - **D5. "Pendências" do modelo** repetem a nota de lacuna e às vezes terminam com ponto duplo.
 
-## Conclusão
+### Conclusão
 
 - **Segurança e fidelidade:** nenhuma das 48 respostas afirmou algo sem fonte. Os erros de status são para o lado conservador: `partial` ou `insufficient_evidence` quando a pontuação esperava `answered`.
 - **Variação:** a nota objetiva oscila entre 12 e 14 de 16 no mesmo commit. A causa principal é o verificador semântico, que julga a cobertura de perguntas comparativas de formas diferentes de uma rodada para outra.

@@ -1,9 +1,9 @@
 {
-  "code_commit": "6b7df82",
-  "note": "Os relatórios registram '6b7df82-dirty' porque a documentação desta pasta estava sendo escrita durante as rodadas; app/, data/ e a imagem testada são os do commit 6b7df82.",
+  "code_commit": "6ae47f2",
+  "note": "Relatórios e demo executados com a árvore limpa no commit 6ae47f2 (sem '-dirty'); a documentação foi escrita depois, em commits separados.",
   "image": {
     "name": "entrevista-getnet-api:latest",
-    "id": "sha256:364c97e1d6627d86a9e61fedbe71ad5fb8cb85b049f69ac1c181f9df77336b50",
+    "id": "sha256:4218152f10133fffd0dcaf7dd257d462d46043fdb719098a54db49c84631e720",
     "built_from": "Dockerfile target api"
   },
   "runtime": {
@@ -44,15 +44,16 @@
   "secrets": "OPENAI_API_KEY e TAVILY_API_KEY vêm do .env local (não versionado); só a presença foi registrada (tavily_configured).",
   "evidence": {
     "eval_reports": [
-      "evals/reports/run-20261123T234041Z.json",
-      "evals/reports/run-20261123T234319Z.json",
-      "evals/reports/run-20261123T234557Z.json"
+      "evals/reports/run-20261125T170355Z.json",
+      "evals/reports/run-20261125T170713Z.json",
+      "evals/reports/run-20261125T171028Z.json"
     ],
     "eval_summary": "docs/evidence/eval-summary.json",
     "smoke": "docs/evidence/smoke.txt",
     "demo": "docs/evidence/demo.txt",
-    "drills": "docs/evidence/drills.json",
+    "drills": "docs/evidence/drills.json (executado em 6b7df82; app/main.py, app/llm.py, app/state.py, app/deps.py, app/rag.py, app/tools/, Dockerfile e docker-compose.yml não mudaram até 6ae47f2)",
+    "retrieval_metrics": "docs/evidence/retrieval-metrics.json (commit limpo 57c05d3; índice e recuperação inalterados até 6ae47f2)",
     "semantic_review": "docs/evidence/semantic-review.md"
   },
-  "offline_suite": "310 passed no host e 310 passed dentro da imagem `test` construída do mesmo código (ruff, format e mypy limpos)"
+  "offline_suite": "328 passed no host (ruff, format e mypy limpos); o job `image` do CI roda a mesma suíte dentro da imagem `test`"
 }
