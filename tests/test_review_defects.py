@@ -111,7 +111,6 @@ def _web_id(url: str) -> str:
     return f"web_{hashlib.sha1(url.encode()).hexdigest()[:10]}"
 
 
-@pytest.mark.xfail(strict=True, reason="D4: a junção mantém a cotação velha antes da do dia")
 async def test_d4_repair_with_todays_rate_comes_before_the_stale_one(tmp_path: Path) -> None:
     """Reproduz o e07 da rodada 2: a primeira tentativa comprova uma cotação de 3 dias antes; o
     verificador cobra a de hoje; o reparo a encontra. A do dia vem primeiro."""

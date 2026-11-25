@@ -83,17 +83,23 @@ def made_progress(before: AgentResult, after: AgentResult) -> bool:
 
 
 def merge_repair(before: AgentResult, after: AgentResult) -> AgentResult:
-    """Junta o que cada tentativa comprovou; as lacunas que restam são as da tentativa nova."""
+    """Junta o que cada tentativa comprovou; as lacunas que restam são as da tentativa nova.
+
+    Ordem (D4): o reparo vem primeiro. Ele mira a lacuna que o verificador apontou na primeira
+    tentativa (ex.: a cotação de hoje, quando só havia uma de três dias antes), então é a parte
+    que responde ao que faltava; o que a primeira tentativa comprovou fica depois, como
+    complemento. Um só cabeçalho de assunto, o da primeira tentativa."""
     if before.status == "insufficient_evidence":
         return after
     evidence = {e.id: e for e in [*before.evidence, *after.evidence]}
     status: Status = "answered" if not after.gaps else "partial"
-    # a continuação não repete o cabeçalho: o assunto já está na primeira parte
-    _, continuation = split_header(after.answer)
+    header, earlier = split_header(before.answer)
+    _, repaired = split_header(after.answer)
+    parts = [header, repaired, earlier] if header else [repaired, earlier]
     return AgentResult(
         agent=before.agent,
         status=status,
-        answer=f"{before.answer}\n\n{continuation}",
+        answer="\n\n".join(parts),
         evidence=list(evidence.values()),
         pending=list(dict.fromkeys([*before.pending, *after.pending])),
         gaps=after.gaps,
