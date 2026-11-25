@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import pytest
 
 from app.deps import Deps
 from app.llm import LLMTurn
@@ -57,7 +56,6 @@ def _has_history(messages: list[dict[str, str]]) -> bool:
     return any("Histórico recente" in (m.get("content") or "") for m in messages)
 
 
-@pytest.mark.xfail(strict=True, reason="o verificador julga contra o pronome não resolvido")
 async def test_follow_up_with_pronoun_is_answered_from_the_self_contained_task(
     tmp_path: Path,
 ) -> None:

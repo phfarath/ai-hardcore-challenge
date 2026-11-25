@@ -147,8 +147,11 @@ def merge_status(results: list[AgentResult]) -> Status:
 class _Run:
     """Estado mutável de uma requisição: o que já foi obtido sobrevive a falhas posteriores."""
 
-    def __init__(self, ctx: RequestContext, deps: Deps, replans_used: int = 0) -> None:
+    def __init__(
+        self, ctx: RequestContext, deps: Deps, replans_used: int = 0, follow_up: bool = False
+    ) -> None:
         self.ctx = ctx
+        self.follow_up = follow_up  # há histórico: a mensagem nova pode depender dele
         self.deps = deps
         s = deps.settings
         self.policy = ReplanPolicy(s.max_replans, s.replan_min_llm_calls, s.replan_min_seconds)
@@ -292,7 +295,10 @@ class _Run:
 async def _run_workflow(plan: RoutePlan, run: _Run) -> None:
     tasks = {t.agent: t for t in plan.tasks}
     if plan.workflow == "knowledge":
-        await run.knowledge(tasks["knowledge"], original_message=run.ctx.message)
+        # num follow-up ("e a taxa dela?") a mensagem crua não tem referente: o verificador julga
+        # contra a tarefa que o Router escreveu autocontida a partir do histórico
+        original = None if run.follow_up else run.ctx.message
+        await run.knowledge(tasks["knowledge"], original_message=original)
     elif plan.workflow == "support":
         await run.support(tasks["support"])
         await run.add_guidance()
@@ -444,7 +450,7 @@ async def run_chat(
             "source_ids": [],
         }
         return outcome
-    run = _Run(ctx, deps, replans_used)
+    run = _Run(ctx, deps, replans_used, follow_up=bool(history))
     await _run_workflow(plan, run)
     if not run.results:
         log_event(
