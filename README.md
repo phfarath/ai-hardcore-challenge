@@ -299,43 +299,29 @@ Descrito (não implementado): painéis de latência p50/p95 por fluxo e por agen
 
 ## Custo e tempo de desenvolvimento
 
-Tokens e custo foram medidos nos logs locais das sessões do Claude Code (uso registrado por chamada ao modelo, contando cada chamada uma vez), em 25/11/2026. O custo é calculado com o **preço público da API** para esses tokens.
+| Versão | Modelo | Tempo | Tokens do Claude | Custo real (US$) |
+|---|---|---:|---:|---:|
+| v1 (entrega avaliada com 7,9) | Claude Sonnet 5.5 | não registrado | ≈ 49,4 milhões | 14,25 |
+| v2 (revisão T01–T10 e a rodada de correções) | Claude Opus 5.5 | ≈ 5 h de sessão ativa, de 22 a 25/11 | ≈ 139,9 milhões | 25,64 |
+| **Total** | | — | **≈ 189 milhões** | **39,89** |
 
-| Versão | Tempo | Tokens do Claude | Custo equivalente (US$) |
-|---|---:|---:|---:|
-| v1 (entrega avaliada com 7,9) | não registrado | ≈ 56,7 milhões | ≈ 16,03 |
-| v2 (revisão T01–T10 e a rodada de correções) | ≈ 5 h de sessão ativa, de 22 a 25/11 | ≈ 139,9 milhões | ≈ 51,70 |
-| **Total** | — | **≈ 196,6 milhões** | **≈ 67,73** |
-
+- **Custo:** o valor efetivamente pago em cada versão.
+- **Tokens:** contados nos logs locais do Claude Code, uma vez por chamada ao modelo. Quase tudo é leitura de cache, porque a conversa é reenviada a cada passo. Na v2, os tokens novos (entrada, saída e escrita de cache) somam ≈ 2,2 milhões, dos quais ≈ 578 mil são de saída.
 - **Tempo da v2:** soma dos intervalos de até 15 minutos entre eventos da sessão; pausas mais longas contam como paradas. Não inclui leitura fora da sessão nem a gravação do vídeo. O tempo da v1 não foi cronometrado na época.
-- **Quase tudo é leitura de cache:** a conversa é reenviada a cada passo e vem do cache (≈ 97% dos tokens). Os tokens novos (entrada, saída e escrita de cache) somam ≈ 2,1 milhões na v1 e ≈ 2,2 milhões na v2.
 - **Não estão incluídos:** o custo de *executar* a aplicação (chamadas à OpenAI e ao Tavily nos testes, `evals` e demonstrações).
 
-### Detalhe por versão
+**v1:** uma sessão do Claude Code com Claude Sonnet 5.5 (`claude-sonnet-5-5`), 2 subagentes Sonnet 5.5 (revisão da spec e revisão final) e o Claude Haiku 5.5 em 2 buscas web.
 
-**v1:** uma sessão do Claude Code com **Claude Sonnet 5.5** (`claude-sonnet-5-5`), 2 subagentes Sonnet 5.5 (revisão da spec e revisão final) e o Claude Haiku 5.5 em 2 buscas web.
+**v2:** uma sessão do Claude Code com Claude Opus 5.5 (`claude-opus-5-5`), sem subagentes:
 
-**v2:** uma sessão do Claude Code com **Claude Opus 5.5** (`claude-opus-5-5`), sem subagentes.
-
-| Item | v1: Sonnet 5.5 | v2: Opus 5.5 |
-|---|---:|---:|
-| Chamadas ao modelo | 219 | 586 |
-| Entrada não cacheada | 490 | 1.200 |
-| Saída (inclui raciocínio) | 398.047 | 578.064 |
-| Escrita de cache, 5 min | 197.738 | 0 |
-| Escrita de cache, 1 h | 1.519.695 | 1.571.781 |
-| Leitura de cache | 54.505.442 | 137.785.017 |
-| **Tokens** | **56.621.412** (+ 38.337 do Haiku) | **139.936.062** |
-| **Custo equivalente** | **US$ 16,01** (+ ≈ 0,02 do Haiku) | **US$ 51,70** |
-
-Tarifas por milhão de tokens:
-
-| Modelo | Entrada | Saída | Leitura de cache | Escrita de cache, 5 min | Escrita de cache, 1 h |
-|---|---:|---:|---:|---:|---:|
-| Sonnet 5.5 | US$ 2 | US$ 10 | US$ 0,10 | US$ 2,50 | US$ 4 |
-| Opus 5.5 | US$ 4 | US$ 20 | US$ 0,20 | US$ 5 | US$ 8 |
-
-As tarifas do Sonnet reproduzem os checkpoints de custo que o próprio Claude Code gravou na sessão da v1. A primeira versão desta seção mostrava ≈ 49,4 milhões e US$ 14,25 para a v1 porque foi escrita antes do fim daquela sessão.
+| Item (v2) | Tokens |
+|---|---:|
+| Chamadas ao modelo | 586 |
+| Entrada não cacheada | 1.200 |
+| Saída (inclui raciocínio) | 578.064 |
+| Escrita de cache | 1.571.781 |
+| Leitura de cache | 137.785.017 |
+| **Total** | **139.936.062** |
 
 ## Semana 1 dentro da Getnet
 
