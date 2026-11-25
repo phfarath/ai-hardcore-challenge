@@ -360,3 +360,18 @@ async def test_partial_repair_is_appended_without_a_second_header(tmp_path: Path
     assert response.answer.count("Com base nas fontes consultadas") == 1
     assert "tela touch" in response.answer and "Wi-Fi ou o chip" in response.answer
     assert "prazo de visita técnica" in response.answer
+
+
+@pytest.mark.xfail(strict=True, reason="status ainda não distingue caso aberto de recomendação")
+async def test_status_says_whether_a_case_was_opened_or_only_recommended(tmp_path: Path) -> None:
+    """Caso real: `handoff_opened` + `handoff_id` + `awaiting_operator`. Sem escopo para abrir
+    caso: `handoff_recommended`, sem id, turno concluído."""
+    deps = await make_deps(tmp_path, ScriptedLLM([_human_plan(), _human_plan()]))
+    message = {"message": "Quero falar com um atendente."}
+    opened = (await _api(deps, "POST", "/chat", "user-a", message)).json()
+    assert opened["status"] == "handoff_opened"
+    assert opened["handoff_id"] and opened["run_status"] == "awaiting_operator"
+    limited = [RECEIVABLES_READ, TERMINALS_READ]
+    recommended = (await _api(deps, "POST", "/chat", "user-a", message, scopes=limited)).json()
+    assert recommended["status"] == "handoff_recommended"
+    assert recommended["handoff_id"] is None and recommended["run_status"] == "completed"
