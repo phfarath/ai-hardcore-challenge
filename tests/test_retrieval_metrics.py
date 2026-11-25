@@ -4,8 +4,6 @@ import math
 
 import pytest
 
-pytestmark = pytest.mark.xfail(strict=True, raises=ImportError, reason="T08 ainda não existe")
-
 A, B, C, X, Y = "a", "b", "c", "x", "y"
 
 
