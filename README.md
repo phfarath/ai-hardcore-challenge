@@ -12,21 +12,58 @@ Ideia central: **o LLM interpreta e escolhe ferramentas; o código controla iden
 
 Em volta dos agentes: **identidade por JWT** com autorização por recurso, **conversa durável** (SQLite) com escolha em dois turnos e idempotência, **verificação** de cada afirmação antes de `answered`, **replanejamento limitado** depois de observar resultados, **caso humano real** com fila de operador e retomada na conversa, e **operação** de uma instância (prontidão, desligamento, saturação, privacidade das consultas externas).
 
-**Link da demo (v1):** https://youtu.be/ro0qdh9WJQE
+**Link do vídeo da v2:** {{LINK_VIDEO_V2}} (vídeo da v1: https://youtu.be/ro0qdh9WJQE)
 
 > **Revisão v2.** Esta versão responde ao feedback da v1 (7,9/10). A matriz **crítica → implementação → teste → evidência** está em [`docs/evidence/README.md`](docs/evidence/README.md); decisões em [`docs/adr/`](docs/adr/); operação em [`docs/runbook.md`](docs/runbook.md); roteiro de demonstração em [`docs/demo.md`](docs/demo.md). A especificação de comportamento está em [`spec.md`](spec.md).
 
+## Autoavaliação com a rubrica de vocês
+
+Estimativa nossa, conservadora, para quem avalia conferir contra a evidência. A nota v1 é a do feedback.
+
+| Critério | Peso | Nota v1 (de vocês) | Nota v2 (nossa estimativa) | Evidência |
+|---|---|---|---|---|
+| Business Fit | 8% | 9,5 | **9,5** | fluxos do enunciado inalterados; `evals/cases.json` (17 casos) |
+| Agentic | 15% | 7,2 | **8,0** | replanejamento limitado a 1 mudança por pedido: [`app/replanning.py`](app/replanning.py), [`tests/test_replanning.py`](tests/test_replanning.py), ADR 0004. Não é um planejador aberto |
+| RAG | 10% | 8,5 | **8,5** | recuperação medida, não melhorada: [`retrieval-labeling.md`](docs/evidence/retrieval-labeling.md) (Recall@5 0,91; inglês 0,78) |
+| Tools | 10% | 9,3 | **9,3** | ferramentas sem identidade nos argumentos, valores renderizados pelo servidor: [`tests/test_regressions.py`](tests/test_regressions.py) |
+| Security | 13% | 6,0 | **8,0** | JWT → `Principal`, autorização antes do LLM, escopos: [`tests/test_auth.py`](tests/test_auth.py), [`tests/test_operations.py`](tests/test_operations.py). Na demo o emissor é o de desenvolvimento; a validação por JWKS de produção existe, mas não foi testada com um IdP real |
+| Memory | 8% | 1,5 | **7,0** | conversa durável, escolha em dois turnos, follow-up autocontido: [`tests/test_conversations.py`](tests/test_conversations.py), [`tests/test_followup.py`](tests/test_followup.py), x17 (o pronome é resolvido nas 3 rodadas, mas o caso falha porque foi mal rotulado). Uma instância só |
+| Human Oversight | 7% | 2,5 | **7,0** | caso real, fila, claim/resolve versionados, retomada: [`tests/test_handoffs.py`](tests/test_handoffs.py), x16, `demo.txt`. Sem tela de operador |
+| Evaluation | 14% | 8,7 | **8,8** | scorer sem falso positivo, 3 rodadas, métricas de recuperação, revisão semântica: [`docs/evidence/`](docs/evidence/README.md). Revisão semântica não independente |
+| Observability | 6% | 7,5 | **7,5** | logs JSON com allowlist, `/ready`: [`app/observability.py`](app/observability.py). Sem traces, painéis nem alertas |
+| Production Eng | 5% | 8,8 | **9,0** | CI testa dentro da imagem, smoke e SIGTERM; drills de saturação e falhas: [`drills.json`](docs/evidence/drills.json) |
+| Engineering Judgment | 4% | 9,5 | **9,5** | ADRs 0001–0005, limites declarados |
+| **Média ponderada** | 100% | 7,2 | **8,3** | |
+
+A média ponderada das notas da v1 com esses pesos dá 7,2, não os 7,9 informados; a diferença pode vir de um ajuste da banca que não conhecemos. Por isso a comparação justa é critério a critério. Os maiores saltos estimados são Memory e Human Oversight, que na v1 praticamente não existiam. RAG fica igual: a recuperação foi medida, não melhorada.
+
+## Como testar em 2 minutos
+
+> **`/chat` exige token.** Sem `Authorization: Bearer`, a resposta é 401. Na demo, `POST /dev/token` emite tokens dos principais de desenvolvimento (só com `APP_ENV=development`, o padrão do `docker compose`).
+
+Com o `.env` preenchido e o índice já criado (a primeira vez, rode antes `docker compose build` e a ingestão de [Como executar](#como-executar), que levam mais que 2 minutos):
+
+```bash
+docker compose up -d && curl -s localhost:8000/ready          # {"status":"ready", ...}
+TOKEN=$(curl -s -X POST localhost:8000/dev/token -H 'Content-Type: application/json' -d '{"sub":"user-a"}' \
+  | python -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
+curl -s -X POST localhost:8000/chat -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"message":"Quando recebo minhas vendas de ontem?"}' | python -m json.tool
+python scripts/demo.py --base-url http://localhost:8000 --restart   # 21 cenários, com reinício do container no meio
+```
+
 ## Estado da verificação
 
-Evidência final no commit `6b7df82` ([manifesto](docs/evidence/release-manifest.json)), em 23/11/2026:
+Evidência final no commit limpo `6ae47f2` ([manifesto](docs/evidence/release-manifest.json)), em 25/11/2026. Os relatórios registram o commit sem `-dirty`: a documentação foi escrita depois das rodadas.
 
 | Verificado | Resultado |
 |---|---|
-| Suíte offline (`pytest`, sem rede nem chaves), no host e dentro da imagem `test` | **310 passed**; ruff, format e mypy limpos |
+| Suíte offline (`pytest`, sem rede nem chaves), no host e dentro da imagem `test` | **328 passed**; ruff, format e mypy limpos |
 | Smoke na imagem da API construída (CI e local) | OK: `/health`, `/ready` com checks, 401 sem token, 403 antes do Router; `docker stop` registra o fechamento dos clientes |
 | Demo ponta a ponta contra a API real, com reinício do container no meio da conversa (`scripts/demo.py --restart`) | **21/21 passos** ([saída](docs/evidence/demo.txt)) |
-| Avaliação real (`gpt-6-luna`, 16 casos), **3 rodadas no mesmo commit** | **12/16, 14/16, 14/16**, 0 erros; rota, ferramentas, valores e afirmações proibidas em 100% nas três ([agregado](docs/evidence/eval-summary.json)) |
-| Revisão semântica das 48 respostas | nenhuma afirmação sem fonte; 5 defeitos registrados ([revisão](docs/evidence/semantic-review.md)) |
+| Avaliação real (`gpt-6-luna`, 17 casos), **3 rodadas no mesmo commit** | **15/17, 13/17, 13/17**, 0 erros; rota, ferramentas, fontes esperadas, valores e afirmações proibidas em 100% nas três ([agregado](docs/evidence/eval-summary.json)) |
+| Métricas de recuperação (27 consultas rotuladas, índice atual) | Recall@5 0,91, MRR 0,87, nDCG@5 0,84; inglês 0,78 contra português 0,98 ([métricas](docs/evidence/retrieval-labeling.md)) |
+| Revisão semântica | nenhuma afirmação sem fonte; D4 e D5 corrigidos, D2 corrigido nos textos fixos, D1 e D3 abertos ([revisão](docs/evidence/semantic-review.md)) |
 | Falhas provocadas (`scripts/drills.py`) | saturação → 503 imediato; chave inválida → 503 em 0,5 s sem retry; índice ausente → `/ready` 503; SIGTERM com pedido em curso → o pedido termina ([drills](docs/evidence/drills.json)) |
 
 As verificações com serviços reais ficam marcadas `@pytest.mark.live` e exigem `.env`.
@@ -77,7 +114,7 @@ curl -s localhost:8000/chat -H 'content-type: application/json' -H "Authorizatio
 ```jsonc
 {
   "request_id": "req_ab12cd34ef56",
-  "status": "answered",            // answered | partial | needs_clarification | insufficient_evidence | handoff_recommended | customer_not_found
+  "status": "answered",            // answered | partial | needs_clarification | insufficient_evidence | handoff_opened | handoff_recommended | customer_not_found
   "answer": "Recebíveis das vendas de 06/11/2026 (dados demonstrativos):\n- Venda R-1988-001: R$ 1.250,00, liquidação em 07/11/2026, status: previsto ...",
   "agents_used": ["router", "customer_support"],
   "sources": [{"id": "R-1988-001", "type": "customer_record", "title": "Recebível R-1988-001", "url": null}],
@@ -86,7 +123,7 @@ curl -s localhost:8000/chat -H 'content-type: application/json' -H "Authorizatio
   "tools_used": ["get_receivables"],
   "conversation_id": "conv_…",     // envie de volta para continuar a conversa (T04)
   "run_id": "run_…",
-  "run_status": "completed",       // "awaiting_operator" quando um caso humano foi aberto (T05)
+  "run_status": "completed",       // "awaiting_operator" quando um caso humano foi aberto (status handoff_opened)
   "handoff_id": null,
   "plan_changes": []               // ex.: ["knowledge_repair"], ["guidance_added"] (T07)
 }
@@ -196,7 +233,7 @@ Notas: o enunciado sugere o site global, mas os cenários são brasileiros, ent�
 - Plano do Router validado pelo código; limites por requisição configuráveis (≤2 especialistas, ≤10 chamadas LLM incluindo retry, verificação e replanejamento, ≤5 ferramentas, ≤2 buscas web, deadline 40 s).
 - **Replanejamento limitado** (`app/replanning.py`): depois de cada etapa o código observa o resultado e pode mudar o plano uma vez: reparar as lacunas apontadas pelo verificador (`knowledge_repair`) ou acrescentar a orientação oficial para um código de erro visto no diagnóstico (`guidance_added`). Só começa se sobrar orçamento para concluir e verificar; sem evidência nova, mantém o que já foi comprovado (`knowledge_repair:no_progress`). A resposta lista as mudanças em `plan_changes`.
 - Evidências verificadas pelo servidor; sem evidência validada → `insufficient_evidence` **e o texto do LLM é descartado** (resposta fixa "não encontrei nas fontes"), para não vazar condição comercial vinda da memória do modelo.
-- Falhas de um ramo viram `partial`. `handoff_recommended` é emitido quando há **problema técnico diagnosticado e nenhuma orientação oficial** (`support_then_knowledge`). O pedido explícito de "falar com um atendente" também abre o caso (fluxo `handoff`). Pelo `/chat`, o turno abre um **caso interno real** (fila, operador, decisão auditável) e devolve `handoff_id` com `run_status=awaiting_operator`; depois da decisão, um worker entrega a resposta do atendente na própria conversa, identificada como resposta humana. Terminal ambíguo vira `needs_clarification`.
+- Falhas de um ramo viram `partial`. O encaminhamento humano acontece quando há **problema técnico diagnosticado e nenhuma orientação oficial** (`support_then_knowledge`): `status=handoff_opened` com `handoff_id` quando o caso real foi aberto, `handoff_recommended` quando é só orientação (principal sem `handoffs:create`). O pedido explícito de "falar com um atendente" também abre o caso (fluxo `handoff`). Pelo `/chat`, o turno abre um **caso interno real** (fila, operador, decisão auditável) e devolve `handoff_id` com `run_status=awaiting_operator`; depois da decisão, um worker entrega a resposta do atendente na própria conversa, identificada como resposta humana. Terminal ambíguo vira `needs_clarification`.
 - Busca web recebe só consulta pública (sem dados do cliente); logs não contêm mensagem, resposta nem `user_id`.
 
 ## Estratégia de testes
@@ -214,31 +251,38 @@ Para ampliar: gravar/reproduzir respostas reais do provedor (VCR) para regressã
 
 ## Avaliação de IA
 
-`evals/cases.json` traz **16 casos**: as 10 mensagens do enunciado + composta, terminal ambíguo, produto inexistente (sem evidência), cliente desconhecido, tentativa de troca de usuário e pedido explícito de atendente. Cada caso define rota, ferramentas obrigatórias e permitidas (qualquer outra reprova), fontes aceitáveis, status, valores ligados ao seu status, valores monetários permitidos, âncoras semânticas e afirmações proibidas; listas vazias ficam fora do denominador e erros de requisição contam como falha. Cada execução grava um relatório JSON por caso em `evals/reports/`.
+`evals/cases.json` traz **17 casos**: as 10 mensagens do enunciado + composta, terminal ambíguo, produto inexistente (sem evidência), cliente desconhecido, tentativa de troca de usuário, pedido explícito de atendente e um follow-up com pronome em dois turnos (`setup_messages`). Cada caso define rota, ferramentas obrigatórias e permitidas (qualquer outra reprova), fontes aceitáveis, status, valores ligados ao seu status, valores monetários permitidos, âncoras semânticas e afirmações proibidas; listas vazias ficam fora do denominador e erros de requisição contam como falha. Cada execução grava um relatório JSON por caso em `evals/reports/`.
 
 ```bash
 docker compose up -d
 python -m evals.run_evals            # imprime PASS/FAIL por caso e as métricas
+python -m evals.summarize evals/reports/run-A.json evals/reports/run-B.json ...   # agrega rodadas
+python -m evals.retrieval_metrics    # métricas de recuperação do índice (só embeddings)
 ```
 
 Métricas: acerto de rota, de ferramentas, de fontes esperadas, de status, preservação de valores e ausência de afirmações proibidas. A pontuação detecta regressões objetivas; a **qualidade semântica** é revisada à parte (abaixo). Evolução natural: um avaliador semântico independente com rubrica calibrada.
 
-**Resultado final (23/11/2026, commit `6b7df82`, API no Docker, `gpt-6-luna`), 3 rodadas:**
+**Resultado final (25/11/2026, commit limpo `6ae47f2`, API no Docker, `gpt-6-luna`), 3 rodadas:**
 
 | Métrica | Rodada 1 | Rodada 2 | Rodada 3 |
 |---|---|---|---|
-| casos | 12/16 | 14/16 | 14/16 |
-| rota | 16/16 | 16/16 | 16/16 |
-| ferramentas | 16/16 | 16/16 | 16/16 |
-| fontes esperadas | 6/6 | 6/6 | 6/6 |
-| status | 11/15 | 13/15 | 13/15 |
+| casos | 15/17 | 13/17 | 13/17 |
+| rota | 17/17 | 17/17 | 17/17 |
+| ferramentas | 17/17 | 17/17 | 17/17 |
+| fontes esperadas | 7/7 | 7/7 | 7/7 |
+| status | 14/16 | 12/16 | 12/16 |
 | valores, valores permitidos e afirmações proibidas | 100% | 100% | 100% |
 
-Estáveis em 3/3: recebíveis, clima, antecipação, crediário, Link de Pagamento, terminal ambíguo, **x13 (produto inexistente → `insufficient_evidence`)**, cliente sem cadastro, troca de identidade e pedido de atendente. Variam entre `partial` e `answered`: e01 e x11 (comparação de máquinas, que as páginas não fazem), e04 (Pix), e05 (conexão) e e07 (câmbio, que depende do snippet da busca). A causa é o verificador semântico, que julga a cobertura de forma diferente a cada rodada; o erro é sempre para o lado conservador. `python -m evals.summarize <relatórios>` agrega várias rodadas.
+Estáveis em 3/3: e01, e02, e03, e06, e08, e09, e10, x12, **x13 (produto inexistente → `insufficient_evidence`)**, x14, x15 e **x16 (`handoff_opened`)**. Variam: e04 e e07 (2/3), x11 (1/3). Falham nas três:
 
-A pontuação não mede tudo: a [revisão semântica](docs/evidence/semantic-review.md) encontrou, por exemplo, uma fonte de médias mensais aceita como previsão de "amanhã" (e02, PASS nas três rodadas) e idiomas misturados em respostas reparadas.
+- **x17 (follow-up com pronome):** a memória funciona. O Router reescreveu "E como eu ativo ele?" como "Como ativar o modo quiosque da Get Smart" nas três rodadas, mas a página oficial não traz os passos e a resposta sai `partial`, corretamente. Foi a expectativa do caso que rotulamos errado; não a trocamos depois de ver o resultado.
+- **e05 (maquininha não conecta):** os passos do ADQ 1-19 aparecem com fonte, mas o verificador cobra passos gerais de conexão que o índice não tem.
 
-Histórico: na v1 o placar foi 14/15 com o x13 falhando (evidência genérica tratada como suficiente); o caso `x16` (pedido de atendente) entrou na v2.
+Todo erro de status é para o lado conservador (`partial` ou `insufficient_evidence`), nunca texto sem fonte.
+
+A pontuação não mede tudo: a [revisão semântica](docs/evidence/semantic-review.md) lê as respostas. Ela encontrou os defeitos D1–D5. D4 e D5 foram corrigidos com regressões. D2 foi corrigido nos textos fixos, mas o texto gerado pelo modelo ainda mistura idiomas às vezes. D1 e D3 seguem abertos.
+
+**Histórico:** na v1 o placar foi 14/15 com um scorer mais leniente, que aprovava o x13 falhando. Os relatórios por caso da v1 não foram guardados, então o scorer v2 não foi rodado contra ela. Na primeira rodada final da v2 (`6b7df82`, 16 casos) o placar foi 12/16, 14/16 e 14/16.
 
 ## Observabilidade e monitoramento em produção
 
@@ -253,9 +297,17 @@ Descrito (não implementado): painéis de latência p50/p95 por fluxo e por agen
 - **Nova fonte de conhecimento**: acrescentar a URL em `data/sources.json` e rodar a ingestão.
 - **Dados reais de clientes**: implementar `CustomerRepository` (`app/repositories.py`) e injetar em `build_deps` (`app/main.py`).
 
-## Custo de desenvolvimento (tokens e dinheiro)
+## Custo e tempo de desenvolvimento
 
-> Os números abaixo são da **v1** (entrega avaliada com 7,9). A revisão v2 (T01–T10) foi feita em outras sessões e **não teve o custo medido**.
+Os tokens e o custo da v1 foram medidos no log local da sessão (detalhe abaixo). Os campos `{{…}}` ainda serão preenchidos com os números medidos da v2 e o tempo total.
+
+| Versão | Tempo total | Tokens do Claude | Custo (US$) |
+|---|---:|---:|---:|
+| v1 (entrega avaliada com 7,9) | {{TEMPO_TOTAL_HORAS_V1}} h | ≈ 49,4 milhões | ≈ 14,25 |
+| v2 (revisão T01–T10 e esta rodada) | {{TEMPO_TOTAL_HORAS_V2}} h | {{TOKENS_CLAUDE_TOTAL_V2}} | {{CUSTO_USD_V2}} |
+| **Total** | **{{TEMPO_TOTAL_HORAS}} h** | **{{TOKENS_CLAUDE_TOTAL}}** | **{{CUSTO_USD}}** |
+
+### Detalhe da v1
 
 Todo o código, os testes, a documentação e as revisões foram feitos com **uma única sessão do Claude Code usando Claude Sonnet 5.5** (`claude-sonnet-5-5`), mais **2 subagentes também Sonnet 5.5** (revisão independente da spec e revisão final do código) e o Claude Haiku 5.5 apenas para 2 buscas web. Números medidos a partir do log local da sessão (uso por mensagem), no momento em que esta seção foi escrita:
 
@@ -273,21 +325,61 @@ Todo o código, os testes, a documentação e as revisões foram feitos com **um
 - Do total, ≈ **96% dos tokens processados foram leituras de cache** (a conversa é reenviada a cada passo e quase sempre vem do cache); os tokens efetivamente "novos" (entrada + saída + escrita de cache) somam ≈ 1,9 milhão, dos quais ≈ **358 mil de saída**.
 - A sessão principal custou ≈ US$ 13,21; os dois subagentes de revisão, ≈ US$ 1,01.
 - **Tarifas usadas** (por milhão de tokens): entrada US$ 2,00, saída US$ 10,00, leitura de cache US$ 0,10, escrita de cache de 5 min US$ 2,50 e de 1 h US$ 4,00. Essas tarifas são as que reproduzem exatamente os três checkpoints de custo que o próprio Claude Code gravou na sessão (US$ 0,58, 7,23 e 9,57). O último checkpoint registrado pelo Claude Code foi **US$ 9,60**; o total acima inclui o trabalho posterior a ele. A tabela pública de preços consultada lista a leitura de cache do Sonnet 5.5 a US$ 0,20/M; com essa tarifa o total subiria para ≈ US$ 19.
-- **Não estão incluídos:** o custo de *executar* a aplicação (chamadas à OpenAI e ao Tavily durante os testes, `evals` e demonstrações), e o tempo de desenvolvimento, que **não foi cronometrado**.
+- **Não estão incluídos:** o custo de *executar* a aplicação (chamadas à OpenAI e ao Tavily durante os testes, `evals` e demonstrações).
+
+## Semana 1 dentro da Getnet
+
+**Rollout gradual, por fluxo.** Cada fluxo (`knowledge`, `support`, `support_then_knowledge`, `combined`, `handoff`) avança sozinho, só depois de 24 h estáveis no degrau anterior:
+
+1. **Shadow** (dias 1–2): o sistema responde em paralelo ao atendimento atual, sem chegar ao cliente; a equipe compara amostras e calibra os limites.
+2. **5%** (dia 3): começando por `knowledge` (só informação pública), depois `support`.
+3. **25%** (dias 4–5): inclui `support_then_knowledge` e `handoff`, com operadores reais na fila.
+4. **100%** (a partir do dia 6, por fluxo), mantendo o desligamento por fluxo.
+
+**Métricas monitoradas** (por fluxo, janela de 1 h):
+
+| Métrica | De onde vem | Alvo inicial |
+|---|---|---|
+| Respostas com afirmação sem evidência | verificação + amostragem humana | **0** |
+| Resposta financeira divergente da ferramenta | comparação do texto com `get_receivables` | **0** |
+| Taxa de `insufficient_evidence` e `partial` | `request_completed.status` | referência do shadow |
+| Taxa de handoff (`handoff_opened` + `handoff_recommended`) | `request_completed.status` | referência do shadow |
+| p95 de latência | `duration_ms` | ≤ 20 s |
+| Custo por pedido | `token_usage`, `llm_calls`, `web_searches` | referência do shadow |
+| 503 e 504 | logs `overloaded`, `request_failed` | < 1% |
+
+**Critério objetivo de desligar ou voltar um degrau** (automático, por fluxo):
+
+- qualquer resposta financeira divergente da ferramenta, ou qualquer afirmação sem fonte confirmada pela amostragem → desliga o fluxo na hora;
+- `insufficient_evidence` acima de 2 vezes a taxa do shadow por 1 h (sinal de índice defasado ou consulta quebrada) → volta um degrau;
+- 503/504 acima de 2% por 15 min, ou p95 acima de 30 s por 30 min → volta um degrau;
+- fila humana com casos vencidos (`handoff_expired`) → congela o avanço do `handoff`.
+
+Os alvos são pontos de partida, não medidos em produção; o shadow serve justamente para trocá-los por números reais.
+
 
 ## Limitações conhecidas
 
 O que **não** foi entregue ou tem limite conhecido (cada item foi observado, não suposto):
 
-- **Recuperação medida, não melhorada** (gap 7 do feedback): em 27 consultas rotuladas, Recall@5 0,91 e MRR 0,87, mas consultas em inglês recuperam pior (0,78) e a FAQ ocupa a maior parte do top 5 ([métricas](docs/evidence/retrieval-labeling.md)). O índice é o mesmo da v1 (25 páginas, 41 chunks), e a rotulagem não teve segundo revisor.
-- **Avaliação semântica não independente**: a revisão das 48 respostas foi feita pelo agente que implementou; não há juiz calibrado com humanos.
-- **Variação do verificador**: a nota oscila entre 12 e 14 de 16 no mesmo commit, sempre para `partial`/`insufficient_evidence`, nunca liberando texto sem fonte.
-- **Defeitos registrados na revisão semântica**: a fonte não é checada quanto à data (D1); idiomas se misturam em respostas reparadas e nas notas de lacuna (D2); as seções de Suporte e Conhecimento não reconciliam o texto livre (D3); a junção do reparo pode manter um dado datado mais antigo (D4); as pendências do modelo repetem a nota de lacuna (D5).
-- **Recusa 51 sem caso humano**: quando o Conhecimento sai `partial` (define "venda negada", mas sem orientação para o código), o caso não é aberto.
-- **Uma instância**: SQLite, worker de retomada e limite de simultaneidade são por processo. Várias instâncias exigem trocar o `StateStore` e a fila (ADRs 0002 e 0003).
-- **Sem tela de operador**: o ciclo humano é exercido pela API e por `scripts/demo.py`.
-- **Observabilidade**: logs JSON com allowlist e `request_id`; sem traces distribuídos, painéis ou alertas (descritos acima, não implementados).
-- **Privacidade por padrões**: a checagem das consultas externas cobre os valores vistos no pedido e padrões conhecidos; formatos novos de dado pessoal exigem atualizá-los.
-- **Dados sintéticos**: clientes e o mapa principal → estabelecimentos são fixtures; produção exige o cadastro real atrás de `CustomerRepository` e `AccessRepository`.
-- **Limites não calibrados**: deadline, orçamentos, simultaneidade, `top_k` e tamanho de chunk são pontos de partida; a carga medida foi de 6 pedidos simultâneos.
+- **Autenticação é de demonstração.** Na demo, o emissor de tokens é local e efêmero (`POST /dev/token`, só com `APP_ENV=development`, chave RSA gerada no processo). Fora de desenvolvimento a API já recusa esse emissor e valida RS256 pelo JWKS configurado (`AUTH_ISSUER`, `AUTH_JWKS_URL` em https, `AUTH_AUDIENCE`), mas isso nunca foi testado contra um IdP real. Com o IdP da Getnet (OIDC) faltaria:
+    - apontar essas três variáveis para ele;
+    - mapear as claims de `tenant_id`, papel e escopos que o IdP emitir;
+    - trocar o mapa principal → estabelecimentos (`JsonAccessRepository`, fixture) pelo cadastro real.
+
+    `Principal`, a autorização antes do LLM e os escopos por ferramenta não mudam (ADR 0001).
+- **Uma instância.** SQLite, o worker de retomada (no mesmo processo da API) e o limite de simultaneidade valem por processo. Várias instâncias exigem trocar o `StateStore` (Postgres) e mover o worker para uma fila (ADRs 0002 e 0003).
+- **Sem tela de operador.** O ciclo humano é exercido pela API e por `scripts/demo.py`.
+- **Defeitos ainda abertos da revisão semântica:**
+    - **D1, data da fonte não checada:** uma página de médias mensais pode sustentar uma previsão. Correção sugerida: passar o tipo e a data da página ao verificador, ou criar uma regra no prompt de clima.
+    - **D3, seções que não se conversam:** o Suporte diz que não há como corrigir, e o Conhecimento mostra a correção logo abaixo. Correção sugerida: conciliar o texto livre na composição.
+    - **D2, parcial:** os textos fixos seguem o idioma da pergunta, mas as lacunas descritas pelo verificador e o texto do reparo ainda saem às vezes em português.
+- **Avaliação semântica não independente.** A revisão das respostas foi feita pelo agente que implementou; não há juiz calibrado com humanos. Variação do verificador: 13 a 15 de 17 no mesmo commit, sempre para o lado conservador.
+- **Carga medida pequena.** Foram 6 pedidos simultâneos numa instância: isso prova o comportamento sob saturação, não a capacidade.
+- **Recuperação medida, não melhorada** (gap 7 do feedback). Em 27 consultas rotuladas, Recall@5 0,91 e MRR 0,87, mas as consultas em inglês recuperam pior (0,78) e a FAQ ocupa a maior parte do top 5 ([métricas](docs/evidence/retrieval-labeling.md)). O índice é o mesmo da v1 (25 páginas, 41 chunks), e a rotulagem não teve segundo revisor.
+- **Recusa 51 sem caso humano.** Quando o Conhecimento sai `partial` (define "venda negada", mas sem orientação para o código), o caso não é aberto.
+- **Observabilidade básica.** Há logs JSON com allowlist e `request_id`; não há traces distribuídos, painéis nem alertas (descritos acima, não implementados).
+- **Privacidade por padrões.** A checagem das consultas externas cobre os valores vistos no pedido e padrões conhecidos; um formato novo de dado pessoal exige atualizar os padrões.
+- **Dados sintéticos.** Clientes e acessos vêm de fixtures; produção exige o cadastro real atrás de `CustomerRepository` e `AccessRepository`.
+- **Limites não calibrados.** Deadline, orçamentos, simultaneidade, `top_k` e tamanho de chunk são pontos de partida.
 - O filtro que impede o LLM de afirmar "pago/confirmado" é por padrões (pt/en) e conservador. Páginas renderizadas por JavaScript não são extraídas.
