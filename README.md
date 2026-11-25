@@ -299,13 +299,14 @@ Descrito (não implementado): painéis de latência p50/p95 por fluxo e por agen
 
 ## Custo e tempo de desenvolvimento
 
-| Versão | Modelo | Tempo | Tokens do Claude | Custo real (US$) |
-|---|---|---:|---:|---:|
-| v1 (entrega avaliada com 7,9) | Claude Sonnet 5.5 | não registrado | ≈ 49,4 milhões | 14,25 |
-| v2 (revisão T01–T10 e a rodada de correções) | Claude Opus 5.5 | ≈ 5 h de sessão ativa, de 22 a 25/11 | ≈ 139,9 milhões | 25,64 |
-| **Total** | | — | **≈ 189 milhões** | **39,89** |
+| Versão | Modelo | Tempo | Tokens do Claude | Custo real (US$) | Equivalente em API (US$) |
+|---|---|---:|---:|---:|---:|
+| v1 (entrega avaliada com 7,9) | Claude Sonnet 5.5 | não registrado | ≈ 56,6 milhões | 14,25 | 16,03 |
+| v2 (revisão T01–T10 e a rodada de correções) | Claude Opus 5.5 | ≈ 5 h de sessão ativa, de 22 a 25/11 | ≈ 139,9 milhões | 25,64 | 51,70 |
+| **Total** | | — | **≈ 196,6 milhões** | **39,89** | **67,73** |
 
-- **Custo:** o valor efetivamente pago em cada versão.
+**Custo pago × preço de API.** O valor da coluna "Custo real" é o que foi efetivamente pago pelo plano/assinatura do Claude (v2: US$ 25,64). Os mesmos tokens da v2, cobrados pela tabela pública da API do Claude Opus 5.5 (US$ 4 entrada, US$ 20 saída, US$ 8 escrita de cache de 1 h e US$ 0,20 leitura de cache, por milhão de tokens; [preços](https://docs.claude.com/en/docs/about-claude/pricing)), custariam ≈ US$ 51,70: 27,56 de leitura de cache, 12,57 de escrita de cache, 11,56 de saída. Na v1 (Sonnet 5.5), o equivalente de API é ≈ US$ 16,03, e o total das duas versões a preço de API fica em ≈ US$ 67,73.
+
 - **Tokens:** contados nos logs locais do Claude Code, uma vez por chamada ao modelo. Quase tudo é leitura de cache, porque a conversa é reenviada a cada passo. Na v2, os tokens novos (entrada, saída e escrita de cache) somam ≈ 2,2 milhões, dos quais ≈ 578 mil são de saída.
 - **Tempo da v2:** soma dos intervalos de até 15 minutos entre eventos da sessão; pausas mais longas contam como paradas. Não inclui leitura fora da sessão nem a gravação do vídeo. O tempo da v1 não foi cronometrado na época.
 - **Não estão incluídos:** o custo de *executar* a aplicação (chamadas à OpenAI e ao Tavily nos testes, `evals` e demonstrações).
