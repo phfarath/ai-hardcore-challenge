@@ -376,5 +376,32 @@
       "1.250,00",
       "3.200,00"
     ]
+  },
+  {
+    "id": "x17-follow-up-pronoun",
+    "setup_messages": [
+      "O que é o modo quiosque da Get Smart?"
+    ],
+    "message": "E como eu ativo ele?",
+    "user_id": "cliente1988",
+    "expected_workflow": "knowledge",
+    "required_tools": [
+      "retrieve_getnet_knowledge"
+    ],
+    "allowed_tools": [],
+    "ordered": false,
+    "expected_source_urls_any": [
+      "https://site.getnet.com.br/get-ajuda-maquininha/solucoes-get-smart/"
+    ],
+    "expected_status": "answered",
+    "must_preserve": [],
+    "must_preserve_records": [],
+    "allowed_amounts": null,
+    "must_mention_any": [
+      [
+        "Configurar"
+      ]
+    ],
+    "must_not_claim": []
   }
 ]

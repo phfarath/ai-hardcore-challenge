@@ -64,6 +64,8 @@ class Case(BaseModel):
     allowed_amounts: list[str] | None = None
     must_mention_any: list[list[str]] = []
     must_not_claim: list[str] = []
+    # turnos de preparo na mesma conversa, antes de `message`; só a resposta final é pontuada
+    setup_messages: list[str] = []
 
 
 class Score(BaseModel):
@@ -179,18 +181,25 @@ async def _token(client: httpx.AsyncClient, customer_id: str) -> str:
 
 
 async def _ask(client: httpx.AsyncClient, case: Case) -> ChatResponse | str:
+    """Envia os turnos de preparo e a mensagem do caso na mesma conversa; devolve o último."""
+    conversation_id: str | None = None
+    result: ChatResponse | str = "no turns"
     try:
         token = await _token(client, case.user_id)
-        response = await client.post(
-            "/chat",
-            json={"message": case.message, "user_id": case.user_id},
-            headers={"Authorization": f"Bearer {token}"},
-        )
+        for message in [*case.setup_messages, case.message]:
+            payload: dict[str, str] = {"message": message, "user_id": case.user_id}
+            if conversation_id:
+                payload["conversation_id"] = conversation_id
+            response = await client.post(
+                "/chat", json=payload, headers={"Authorization": f"Bearer {token}"}
+            )
+            if response.status_code != 200:
+                return f"HTTP {response.status_code}"
+            result = ChatResponse(**response.json())
+            conversation_id = result.conversation_id
     except httpx.HTTPError as exc:
         return f"request failed: {type(exc).__name__}"
-    if response.status_code != 200:
-        return f"HTTP {response.status_code}"
-    return ChatResponse(**response.json())
+    return result
 
 
 def _git(*args: str) -> str:

@@ -1,7 +1,6 @@
 import json
 
 import httpx
-import pytest
 
 from app.schemas import ChatResponse
 from evals.run_evals import Case, load_cases, score_case, score_error, summarize
@@ -214,7 +213,6 @@ def test_financial_cases_bind_values_to_status_and_restrict_amounts() -> None:
     assert by_id["e05-machine-wont-connect"].ordered
 
 
-@pytest.mark.xfail(strict=True, reason="runner ainda não faz casos de vários turnos")
 async def test_multi_turn_case_reuses_the_conversation_and_scores_the_last_turn() -> None:
     """x17: os turnos de preparo abrem a conversa; só o último é pontuado."""
     from evals.run_evals import _ask
