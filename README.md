@@ -12,7 +12,7 @@ Ideia central: **o LLM interpreta e escolhe ferramentas; o código controla iden
 
 Em volta dos agentes: **identidade por JWT** com autorização por recurso, **conversa durável** (SQLite) com escolha em dois turnos e idempotência, **verificação** de cada afirmação antes de `answered`, **replanejamento limitado** depois de observar resultados, **caso humano real** com fila de operador e retomada na conversa, e **operação** de uma instância (prontidão, desligamento, saturação, privacidade das consultas externas).
 
-**Link do vídeo da v2:** {{LINK_VIDEO_V2}} (vídeo da v1: https://youtu.be/ro0qdh9WJQE)
+**Link do vídeo da v2:** https://youtu.be/bKbXGfuIT7o (vídeo da v1: https://youtu.be/ro0qdh9WJQE)
 
 > **Revisão v2.** Esta versão responde ao feedback da v1 (7,9/10). A matriz **crítica → implementação → teste → evidência** está em [`docs/evidence/README.md`](docs/evidence/README.md); decisões em [`docs/adr/`](docs/adr/); operação em [`docs/runbook.md`](docs/runbook.md); roteiro de demonstração em [`docs/demo.md`](docs/demo.md). A especificação de comportamento está em [`spec.md`](spec.md).
 
