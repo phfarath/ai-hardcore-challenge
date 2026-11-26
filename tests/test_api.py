@@ -14,12 +14,17 @@ from app.schemas import AgentOutput, RoutePlan, Task
 from app.tools.search import SearchUnavailable
 from tests.fakes import (
     ADQ_CHUNK_ID,
+    ADQ_QUOTE,
     SMART_CHUNK_ID,
+    SMART_QUOTE,
     FakeSearch,
     ScriptedLLM,
+    claim,
     final_turn,
+    kout,
     make_deps,
     tool_call_turn,
+    verdict,
 )
 
 YESTERDAY = "2026-11-06"
@@ -69,7 +74,7 @@ async def test_accept_getnet_question_without_evidence_is_insufficient(
         [
             final_turn(plan("knowledge", ("knowledge", "taxa do plano X"))),
             tool_call_turn("retrieve_getnet_knowledge", query="taxa do plano X"),
-            final_turn(out("Não encontrei essa condição nas fontes oficiais.")),
+            final_turn(kout("Não encontrei essa condição nas fontes oficiais.")),
         ]
     )
     body = (await post(await make_deps(tmp_path, llm), "Qual a taxa do plano X?")).json()
@@ -113,7 +118,8 @@ async def test_accept_unknown_user_public_question_still_answers(tmp_path: Path)
         [
             final_turn(plan("knowledge", ("knowledge", "Get Smart"))),
             tool_call_turn("retrieve_getnet_knowledge", query="Get Smart"),
-            final_turn(out("Tem tela touch.", SMART_CHUNK_ID)),
+            final_turn(kout("Tem tela touch.", claim(SMART_CHUNK_ID, SMART_QUOTE))),
+            final_turn(verdict(True)),
         ]
     )
     body = (await post(await make_deps(tmp_path, llm), "O que é a Get Smart?", "zzz")).json()
@@ -133,7 +139,8 @@ async def test_accept_terminal_flow_reduced_context(tmp_path: Path) -> None:  # 
             tool_call_turn("get_terminal_diagnostics"),
             final_turn(out("Sua máquina está offline.")),
             tool_call_turn("retrieve_getnet_knowledge", query="erro de conexão"),
-            final_turn(out("Verifique o Wi-Fi.", ADQ_CHUNK_ID)),
+            final_turn(kout("Verifique o Wi-Fi.", claim(ADQ_CHUNK_ID, ADQ_QUOTE))),
+            final_turn(verdict(True)),
         ]
     )
     body = (await post(await make_deps(tmp_path, llm), "Minha maquininha não conecta.")).json()
@@ -150,7 +157,7 @@ async def test_accept_combined_partial(tmp_path: Path) -> None:  # critério 6
         [
             final_turn(plan("combined", ("knowledge", "euro?"), ("support", "vendas"))),
             tool_call_turn("web_search", query="euro hoje"),
-            final_turn(out("Não consegui consultar.")),
+            final_turn(kout("Não consegui consultar.")),
             *support_turns(),
         ]
     )
@@ -166,8 +173,14 @@ async def test_accept_forged_evidence_ids_are_dropped(tmp_path: Path) -> None:  
             final_turn(plan("knowledge", ("knowledge", "Get Smart"))),
             tool_call_turn("retrieve_getnet_knowledge", query="Get Smart"),
             final_turn(
-                out("Tem tela touch.", SMART_CHUNK_ID, "https://forjada.test/x", "R-1988-001")
+                kout(
+                    "Tem tela touch.",
+                    claim(SMART_CHUNK_ID, SMART_QUOTE),
+                    claim("https://forjada.test/x", "trecho forjado pelo modelo"),
+                    claim("R-1988-001", "R$ 1.250,00 previsto para amanhã"),
+                )
             ),
+            final_turn(verdict(True)),
         ]
     )
     body = (await post(await make_deps(tmp_path, llm), "O que é a Get Smart?")).json()

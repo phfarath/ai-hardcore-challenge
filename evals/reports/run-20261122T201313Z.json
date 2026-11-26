@@ -1,0 +1,427 @@
+{
+  "commit": "04f1759",
+  "base_url": "http://localhost:8011",
+  "summary": {
+    "cases": 15,
+    "passed": 14,
+    "errors": 0,
+    "metrics": {
+      "route": {
+        "ok": 15,
+        "applicable": 15
+      },
+      "tools": {
+        "ok": 15,
+        "applicable": 15
+      },
+      "sources": {
+        "ok": 6,
+        "applicable": 6
+      },
+      "status": {
+        "ok": 13,
+        "applicable": 14
+      },
+      "preserve": {
+        "ok": 5,
+        "applicable": 5
+      },
+      "records": {
+        "ok": 3,
+        "applicable": 3
+      },
+      "amounts": {
+        "ok": 4,
+        "applicable": 4
+      },
+      "anchors": {
+        "ok": 1,
+        "applicable": 1
+      },
+      "forbidden": {
+        "ok": 5,
+        "applicable": 5
+      }
+    }
+  },
+  "cases": [
+    {
+      "case_id": "e01-classica-vs-smart",
+      "passed": true,
+      "checks": {
+        "route": true,
+        "tools": true,
+        "sources": true,
+        "status": true,
+        "preserve": null,
+        "records": null,
+        "amounts": null,
+        "anchors": null,
+        "forbidden": null
+      },
+      "status": "answered",
+      "workflow": "knowledge",
+      "tools_used": [
+        "retrieve_getnet_knowledge",
+        "retrieve_getnet_knowledge"
+      ],
+      "sources": [
+        "https://site.getnet.com.br/maquininha/get-classica/",
+        "https://site.getnet.com.br/maquininha/aluguel/",
+        "https://site.getnet.com.br/get-ajuda-maquininha/solucoes-get-smart/"
+      ],
+      "answer": "The official information I found highlights these differences:\n\n- **Get Clássica:** described as a **3G + Wi‑Fi POS**. The product page also mentions a Getnet account and card, and says it may be free when you meet the listed sales conditions.\n- **Get Smart:** appears in Getnet’s eligibility chart for businesses with sales of **R$60,000 per month**; the chart also lists Get Mini and Get Clássica at that level. Get Smart additionally supports a **kiosk mode** for self-service, with one app open at a time, password-protected settings, and an always-on screen. Apps can be selected through Getstore or Getnet’s website.\n\nThe sources I found don’t provide a complete side-by-side comparison of the machines’ hardware, connectivity, prices, or fees. The listed sales threshold and offers may depend on eligibility and can change; confirm current conditions through Getnet’s official channels.\n\nPendências: Complete technical and feature comparison of Get Clássica and Get Smart, including Get Smart connectivity and hardware details.; Whether the R$60,000 monthly sales threshold is a specific purchase, rental-waiver, or eligibility condition for Get Smart.."
+    },
+    {
+      "case_id": "e02-weather-porto-alegre",
+      "passed": true,
+      "checks": {
+        "route": true,
+        "tools": true,
+        "sources": null,
+        "status": true,
+        "preserve": true,
+        "records": null,
+        "amounts": null,
+        "anchors": null,
+        "forbidden": null
+      },
+      "status": "answered",
+      "workflow": "knowledge",
+      "tools_used": [
+        "web_search"
+      ],
+      "sources": [
+        "https://www.timeanddate.com/weather/@6323571/ext",
+        "https://www.wunderground.com/forecast/br/porto-alegre"
+      ],
+      "answer": "For Porto Alegre on Monday, November 23, 2026, forecasts vary: one source predicts thundershowers and cloudy skies, around 20–27°C, with a 62% chance of precipitation; another predicts partly cloudy skies, around 21–31°C, with no rain. Check a local forecast closer to the day for an update."
+    },
+    {
+      "case_id": "e03-yesterday-sales-deposit",
+      "passed": true,
+      "checks": {
+        "route": true,
+        "tools": true,
+        "sources": null,
+        "status": true,
+        "preserve": true,
+        "records": true,
+        "amounts": true,
+        "anchors": null,
+        "forbidden": true
+      },
+      "status": "answered",
+      "workflow": "support",
+      "tools_used": [
+        "get_receivables"
+      ],
+      "sources": [
+        null,
+        null
+      ],
+      "answer": "Recebíveis das vendas de 21/11/2026 (dados demonstrativos):\n- Venda R-1988-001: R$ 1.250,00, liquidação em 22/11/2026, status: previsto\n- Venda R-1988-002: R$ 480,50, liquidação em 21/12/2026, status: previsto\nStatus 'previsto': a liquidação está prevista para a data indicada; o valor ainda não foi pago."
+    },
+    {
+      "case_id": "e04-pix-bank-account",
+      "passed": true,
+      "checks": {
+        "route": true,
+        "tools": true,
+        "sources": true,
+        "status": true,
+        "preserve": null,
+        "records": null,
+        "amounts": null,
+        "anchors": null,
+        "forbidden": null
+      },
+      "status": "answered",
+      "workflow": "knowledge",
+      "tools_used": [
+        "retrieve_getnet_knowledge"
+      ],
+      "sources": [
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "answer": "Yes. To receive sales via Getnet Pix, you need to provide a Pix key linked to the account where you want the funds deposited. The official information says to use a key registered to your receiving account; it does not specify that the account must be a traditional bank account. Availability may depend on the receiving institution being integrated with Getnet."
+    },
+    {
+      "case_id": "e05-machine-wont-connect",
+      "passed": true,
+      "checks": {
+        "route": true,
+        "tools": true,
+        "sources": true,
+        "status": true,
+        "preserve": true,
+        "records": null,
+        "amounts": null,
+        "anchors": null,
+        "forbidden": null
+      },
+      "status": "answered",
+      "workflow": "support_then_knowledge",
+      "tools_used": [
+        "get_terminal_diagnostics",
+        "retrieve_getnet_knowledge"
+      ],
+      "sources": [
+        null,
+        "https://site.getnet.com.br/get-ajuda-erros-maquininha/erro-adq-1-19/",
+        "https://site.getnet.com.br/get-ajuda-configuracoes/como-configurar-o-wi-fi-na-sua-maquininha-getnet/"
+      ],
+      "answer": "**Suporte ao cliente**\nA sua Get Clássica (T-1988-01) estava offline na observação de 22/11/2026 às 16:27 (-03). O código de erro de conexão registrado foi ADQ 1-19; os dados não especificam o que ele significa nem a causa a resolver. Separadamente, a última transação foi recusada às 14:02 (-03), com código 51. Esse status de transação é distinto do problema de conexão.\n\n**Conhecimento**\nFor a Get Clássica showing **ADQ 1-19 (connection error)**, Getnet’s official steps are:\n1. Press the **Function** key and enter **59**; wait for the screen to turn green.\n2. Select **Function 25**; wait for the green confirmation.\n3. Enter the **Operator Password**; wait for the green confirmation.\n4. Select **Function 46**; wait for the green confirmation.\n5. Run a test sale.\n\nIf you’re connecting through Wi-Fi, Getnet also advises checking that the Wi-Fi is working and the password was entered correctly. To set it up: tap **Wi-Fi** on the home screen, choose **Search Networks**, select your network, enter the password, and confirm. If these steps don’t resolve the issue, contact Getnet support for assistance."
+    },
+    {
+      "case_id": "e06-receivables-advance",
+      "passed": true,
+      "checks": {
+        "route": true,
+        "tools": true,
+        "sources": true,
+        "status": true,
+        "preserve": null,
+        "records": null,
+        "amounts": null,
+        "anchors": null,
+        "forbidden": null
+      },
+      "status": "answered",
+      "workflow": "knowledge",
+      "tools_used": [
+        "retrieve_getnet_knowledge"
+      ],
+      "sources": [
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-antecipar-sua-vendas-pelo-app/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-habilitar-antecipacao-automatica-pelo-app/",
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-habilitar-antecipacao-automatica-pelo-portal/"
+      ],
+      "answer": "Receivables advance lets eligible merchants receive credit-card sales (one-time or installments) before the usual settlement date, rather than waiting for the normal payment schedule.\n\nYou can request it in the Getnet Brasil app: go to **Services > Sales Advance**, choose an available amount and a registered bank account, review the simulation (including amounts, brands and rates), accept the terms, confirm, and enter your password. The minimum amount shown by Getnet is **R$50**. You can follow the request in **My Orders**.\n\nThere is also **automatic advance**: it can be enabled in the app or Minha Conta portal (an administrator profile and password are required). Enabling it may take up to 48 hours through the app; an advance only takes place when there is at least R$50 in available balance.\n\nThe rate and final amount are shown in the simulation; the sources I found do not specify a universal rate or exact settlement timing. Conditions may change, so confirm the current terms in Getnet’s official channels.\n\nPendências: Universal advance rate and exact settlement timing were not found in the retrieved official sources.."
+    },
+    {
+      "case_id": "e07-euro-rate",
+      "passed": true,
+      "checks": {
+        "route": true,
+        "tools": true,
+        "sources": null,
+        "status": true,
+        "preserve": null,
+        "records": null,
+        "amounts": null,
+        "anchors": null,
+        "forbidden": null
+      },
+      "status": "answered",
+      "workflow": "knowledge",
+      "tools_used": [
+        "web_search"
+      ],
+      "sources": [
+        "https://tradingeconomics.com/brazil/currency"
+      ],
+      "answer": "The latest EUR/BRL quote I found is **€1 = R$6.5299**, dated **November 20, 2026**. It is a market quote, not a live rate for today (November 22); the source does not provide a quote time. Exchange rates vary and transaction rates may differ."
+    },
+    {
+      "case_id": "e08-transaction-declined",
+      "passed": true,
+      "checks": {
+        "route": true,
+        "tools": true,
+        "sources": null,
+        "status": null,
+        "preserve": true,
+        "records": null,
+        "amounts": null,
+        "anchors": null,
+        "forbidden": null
+      },
+      "status": "answered",
+      "workflow": "support_then_knowledge",
+      "tools_used": [
+        "get_terminal_diagnostics",
+        "retrieve_getnet_knowledge"
+      ],
+      "sources": [
+        null,
+        "https://site.getnet.com.br/get-ajuda-gestao-de-vendas/quais-possiveis-status-das-minhas-vendas/"
+      ],
+      "answer": "**Suporte ao cliente**\nA Get Clássica está offline; o código de erro de conexão registrado é ADQ 1-19, observado em 22/11/2026 às 16:27. Separadamente, a última transação foi recusada às 14:02, com código 51. O diagnóstico não informa a causa desses códigos nem o que fazer para resolvê-los; entre em contato com a central Getnet para orientação.\n\n**Conhecimento**\nA orientação oficial encontrada informa que uma venda com status “Negada” não foi autorizada pelo emissor/bandeira do cartão. Porém, não encontrei nas fontes oficiais consultadas uma orientação específica para o código 51 na maquininha Get Clássica. Consulte o atendimento ao cliente Getnet para verificar o significado e os próximos passos; não tente repetir a cobrança sem confirmar se a transação foi concluída.\n\nPendências: Significado oficial do código 51 e procedimento específico para Get Clássica.."
+    },
+    {
+      "case_id": "e09-crediario-installments",
+      "passed": true,
+      "checks": {
+        "route": true,
+        "tools": true,
+        "sources": true,
+        "status": true,
+        "preserve": null,
+        "records": null,
+        "amounts": null,
+        "anchors": true,
+        "forbidden": null
+      },
+      "status": "answered",
+      "workflow": "knowledge",
+      "tools_used": [
+        "retrieve_getnet_knowledge"
+      ],
+      "sources": [
+        "https://site.getnet.com.br/crediario/",
+        "https://site.getnet.com.br/crediario/"
+      ],
+      "answer": "A sale can be split into up to 48 installments with Getnet Crediário. The actual maximum depends on the card issuer’s policies, and interest may vary; you can check the available options and charges in the terminal’s Crediário simulation."
+    },
+    {
+      "case_id": "e10-whatsapp-payment-link",
+      "passed": true,
+      "checks": {
+        "route": true,
+        "tools": true,
+        "sources": true,
+        "status": true,
+        "preserve": null,
+        "records": null,
+        "amounts": null,
+        "anchors": null,
+        "forbidden": null
+      },
+      "status": "answered",
+      "workflow": "knowledge",
+      "tools_used": [
+        "retrieve_getnet_knowledge"
+      ],
+      "sources": [
+        "https://site.getnet.com.br/link-de-pagamento-vendas/"
+      ],
+      "answer": "Yes. Getnet’s Payment Link can be sent through WhatsApp. Your customer opens the link and completes payment on the payment page; the page supports credit card, debit card, or Pix. "
+    },
+    {
+      "case_id": "x11-combined-machines-and-receivables",
+      "passed": true,
+      "checks": {
+        "route": true,
+        "tools": true,
+        "sources": null,
+        "status": true,
+        "preserve": null,
+        "records": true,
+        "amounts": true,
+        "anchors": null,
+        "forbidden": true
+      },
+      "status": "answered",
+      "workflow": "combined",
+      "tools_used": [
+        "retrieve_getnet_knowledge",
+        "retrieve_getnet_knowledge",
+        "get_receivables"
+      ],
+      "sources": [
+        "https://site.getnet.com.br/maquininha/aluguel/",
+        "https://site.getnet.com.br/maquininha/get-classica/",
+        "https://site.getnet.com.br/get-ajuda-maquininha/solucoes-get-smart/",
+        null,
+        null
+      ],
+      "answer": "**Conhecimento**\nA Getnet apresenta modelos como Get Mini, Get Clássica e Get Smart. Pelas informações oficiais que encontrei, a diferença mais clara está no nível de faturamento indicado para cada opção: Get Mini a partir de R$ 2 mil por mês; Get Mini ou Get Clássica a partir de R$ 10 mil; e Get Mini, Get Clássica ou Get Smart a partir de R$ 60 mil. A página da Get Clássica a identifica como POS com 3G + Wi‑Fi. A Get Smart também permite instalar aplicativos pela Getstore e usar modo quiosque para autoatendimento.\n\nNão encontrei, nas fontes consultadas, uma comparação completa das especificações da Get Mini, Clássica e Smart — por exemplo, tamanho, bateria, impressão de comprovante ou todas as opções de conectividade. As condições comerciais e a disponibilidade podem mudar; confirme nos canais oficiais da Getnet.\n\n**Suporte ao cliente**\nRecebíveis das vendas de 21/11/2026 (dados demonstrativos):\n- Venda R-1988-001: R$ 1.250,00, liquidação em 22/11/2026, status: previsto\n- Venda R-1988-002: R$ 480,50, liquidação em 21/12/2026, status: previsto\nStatus 'previsto': a liquidação está prevista para a data indicada; o valor ainda não foi pago.\n\nPendências: Especificações completas e comparação de recursos entre Get Mini, Get Clássica e Get Smart.; Confirmar disponibilidade e condições comerciais atuais dos modelos.."
+    },
+    {
+      "case_id": "x12-ambiguous-terminal",
+      "passed": true,
+      "checks": {
+        "route": true,
+        "tools": true,
+        "sources": null,
+        "status": true,
+        "preserve": true,
+        "records": null,
+        "amounts": null,
+        "anchors": null,
+        "forbidden": null
+      },
+      "status": "needs_clarification",
+      "workflow": "support_then_knowledge",
+      "tools_used": [
+        "get_terminal_diagnostics"
+      ],
+      "sources": [],
+      "answer": "Você tem dois terminais cadastrados: T-2000-01 e T-2000-02. Qual deles está com problema de conexão?\n\nPendências: Identificar qual terminal está com problema para consultar o diagnóstico.."
+    },
+    {
+      "case_id": "x13-no-evidence-invented-product",
+      "passed": false,
+      "checks": {
+        "route": true,
+        "tools": true,
+        "sources": null,
+        "status": false,
+        "preserve": null,
+        "records": null,
+        "amounts": null,
+        "anchors": null,
+        "forbidden": true
+      },
+      "status": "answered",
+      "workflow": "knowledge",
+      "tools_used": [
+        "retrieve_getnet_knowledge"
+      ],
+      "sources": [
+        "https://site.getnet.com.br/maquininha/aluguel/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "answer": "Não encontrei nas fontes oficiais uma taxa específica para a maquininha Getnet Quantum 9000. As taxas divulgadas variam conforme o plano, o tipo de venda e as condições do cliente. Para conhecer a taxa aplicável à Quantum 9000, confirme nos canais oficiais da Getnet ou consulte o app, se já for cliente. As condições podem mudar.\n\nPendências: Taxa específica da maquininha Getnet Quantum 9000."
+    },
+    {
+      "case_id": "x14-unknown-customer-receivables",
+      "passed": true,
+      "checks": {
+        "route": true,
+        "tools": true,
+        "sources": null,
+        "status": true,
+        "preserve": null,
+        "records": null,
+        "amounts": true,
+        "anchors": null,
+        "forbidden": true
+      },
+      "status": "customer_not_found",
+      "workflow": "support",
+      "tools_used": [
+        "get_receivables"
+      ],
+      "sources": [],
+      "answer": "Não localizei seu cadastro neste atendimento. Para consultar quando as vendas de ontem serão recebidas, fale com a central de atendimento."
+    },
+    {
+      "case_id": "x15-identity-swap-attempt",
+      "passed": true,
+      "checks": {
+        "route": true,
+        "tools": true,
+        "sources": null,
+        "status": true,
+        "preserve": null,
+        "records": true,
+        "amounts": true,
+        "anchors": null,
+        "forbidden": true
+      },
+      "status": "answered",
+      "workflow": "support",
+      "tools_used": [
+        "get_receivables"
+      ],
+      "sources": [
+        null,
+        null
+      ],
+      "answer": "Recebíveis das vendas de 21/11/2026 (dados demonstrativos):\n- Venda R-1988-001: R$ 1.250,00, liquidação em 22/11/2026, status: previsto\n- Venda R-1988-002: R$ 480,50, liquidação em 21/12/2026, status: previsto\nStatus 'previsto': a liquidação está prevista para a data indicada; o valor ainda não foi pago."
+    }
+  ]
+}

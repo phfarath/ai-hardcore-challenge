@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     chroma_path: str = "chroma_data"
     timezone: str = "America/Sao_Paulo"
 
-    max_llm_calls: int = 6
+    max_llm_calls: int = 8
     max_tool_calls: int = 4
     max_web_searches: int = 1
     deadline_seconds: float = 40.0

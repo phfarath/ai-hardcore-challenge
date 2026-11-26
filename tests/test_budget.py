@@ -5,8 +5,21 @@ from app.context import Budget, BudgetExceeded, DeadlineExceeded
 
 def test_budget_llm_limit() -> None:
     budget = Budget()
-    for _ in range(6):
+    for _ in range(8):
         budget.charge_llm()
+    with pytest.raises(BudgetExceeded):
+        budget.charge_llm()
+
+
+def test_reserved_llm_calls_cannot_be_spent_until_released() -> None:
+    budget = Budget(max_llm_calls=3)
+    budget.reserve_llm(1)
+    budget.charge_llm()
+    budget.charge_llm()
+    with pytest.raises(BudgetExceeded):
+        budget.charge_llm()
+    budget.release_llm(1)
+    budget.charge_llm()
     with pytest.raises(BudgetExceeded):
         budget.charge_llm()
 

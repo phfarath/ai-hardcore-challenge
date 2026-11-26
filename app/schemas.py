@@ -15,6 +15,7 @@ Status = Literal[
     "customer_not_found",
 ]
 EvidenceType = Literal["kb_chunk", "web_result", "customer_record"]
+DiagnosticGoal = Literal["connectivity", "transaction_decline", "general"]
 
 
 class ChatRequest(BaseModel):
@@ -28,6 +29,8 @@ class Task(BaseModel):
     # default_factory (não `default`): o schema enviado ao LLM não pode ter a palavra-chave
     # `default`, que o modo estrito de structured outputs pode recusar
     source_scope: Literal["getnet", "web", "auto"] = Field(default_factory=lambda: "auto")
+    # o que o cliente quer diagnosticar: escolhe quais fatos do terminal seguem ao Knowledge
+    diagnostic_goal: DiagnosticGoal = Field(default_factory=lambda: "general")
 
 
 class RoutePlan(BaseModel):
@@ -93,3 +96,44 @@ class ChatResponse(BaseModel):
     data_mode: Literal["demo"] | None = None
     workflow: Workflow | None = None
     tools_used: list[str] = Field(default_factory=list)
+
+
+class Claim(BaseModel):
+    """Uma parte da pergunta e a afirmação que a responde, com o trecho literal que a sustenta."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    obligation: str
+    status: Literal["covered", "not_found"]
+    statement: str
+    evidence_id: str | None
+    quote: str | None
+
+
+class KnowledgeOutput(BaseModel):
+    """Saída estruturada do Knowledge: o status final é calculado pelo servidor, não por ele."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    answer: str
+    claims: list[Claim]
+    pending: list[str]
+
+
+class ClaimVerdict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    claim: int
+    supported: bool
+    reason: str
+
+
+class VerificationOutput(BaseModel):
+    """Saída do verificador semântico: suporte por afirmação e cobertura da pergunta."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    verdicts: list[ClaimVerdict]
+    answers_question: bool
+    uncovered: list[str]
+    answer_consistent: bool

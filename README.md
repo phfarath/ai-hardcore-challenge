@@ -165,7 +165,7 @@ Notas: o enunciado sugere o site global, mas os cenários são brasileiros, ent�
 ## Guardrails e confiabilidade
 
 - Validação de entrada antes de qualquer chamada ao LLM; identidade só no `RequestContext`; o repositório filtra por esse contexto e terminais de outro cliente nunca são revelados.
-- Plano do Router validado pelo código; limites por requisição configuráveis (≤2 especialistas, ≤6 chamadas LLM incluindo retry, ≤4 ferramentas, ≤1 busca web, deadline 40 s).
+- Plano do Router validado pelo código; limites por requisição configuráveis (≤2 especialistas, ≤8 chamadas LLM incluindo retry e verificação, ≤4 ferramentas, ≤1 busca web, deadline 40 s).
 - Evidências verificadas pelo servidor; sem evidência validada → `insufficient_evidence` **e o texto do LLM é descartado** (resposta fixa "não encontrei nas fontes"), para não vazar condição comercial vinda da memória do modelo.
 - Falhas de um ramo viram `partial`. `handoff_recommended` é emitido quando há **problema técnico diagnosticado e nenhuma orientação oficial** (`support_then_knowledge`): é só uma recomendação, nunca um atendimento aberto. Terminal ambíguo vira `needs_clarification`.
 - Busca web recebe só consulta pública (sem dados do cliente); logs não contêm mensagem, resposta nem `user_id`.
@@ -183,7 +183,7 @@ Para ampliar a integração: gravar/reproduzir respostas reais do provedor (VCR)
 
 ## Avaliação de IA
 
-`evals/cases.json` traz **15 casos**: as 10 mensagens do enunciado + composta, terminal ambíguo, produto inexistente (sem evidência), cliente desconhecido e tentativa de troca de usuário. Cada caso define rota, ferramentas, fontes aceitáveis, valores que devem ser preservados e afirmações proibidas.
+`evals/cases.json` traz **15 casos**: as 10 mensagens do enunciado + composta, terminal ambíguo, produto inexistente (sem evidência), cliente desconhecido e tentativa de troca de usuário. Cada caso define rota, ferramentas obrigatórias e permitidas (qualquer outra reprova), fontes aceitáveis, status, valores ligados ao seu status, valores monetários permitidos, âncoras semânticas e afirmações proibidas; listas vazias ficam fora do denominador e erros de requisição contam como falha. Cada execução grava um relatório JSON por caso em `evals/reports/`.
 
 ```bash
 docker compose up -d
@@ -218,10 +218,30 @@ Descrito (não implementado): painéis de latência p50/p95 por fluxo e por agen
 - **Nova fonte de conhecimento**: acrescentar a URL em `data/sources.json` e rodar a ingestão.
 - **Dados reais de clientes**: implementar `CustomerRepository` (`app/repositories.py`) e injetar em `build_deps` (`app/main.py`).
 
+## Custo de desenvolvimento (tokens e dinheiro)
+
+Todo o código, os testes, a documentação e as revisões foram feitos com **uma única sessão do Claude Code usando Claude Sonnet 5.5** (`claude-sonnet-5-5`), mais **2 subagentes também Sonnet 5.5** (revisão independente da spec e revisão final do código) e o Claude Haiku 5.5 apenas para 2 buscas web. Números medidos a partir do log local da sessão (uso por mensagem), no momento em que esta seção foi escrita:
+
+| Item | Tokens | Custo (US$) |
+|---|---:|---:|
+| Entrada não cacheada | 394 | 0,00 |
+| Saída (inclui raciocínio) | 358.148 | 3,58 |
+| Escrita de cache, 5 min | 197.738 | 0,49 |
+| Escrita de cache, 1 h | 1.350.276 | 5,40 |
+| Leitura de cache | 47.407.492 | 4,74 |
+| **Total Sonnet 5.5** (176 chamadas ao modelo) | **49.314.048** | **14,22** |
+| Haiku 5.5 (2 buscas web) | 38.337 | ≈ 0,02 |
+| **Total** | **≈ 49,4 milhões** | **≈ US$ 14,25** |
+
+- Do total, ≈ **96% dos tokens processados foram leituras de cache** (a conversa é reenviada a cada passo e quase sempre vem do cache); os tokens efetivamente "novos" (entrada + saída + escrita de cache) somam ≈ 1,9 milhão, dos quais ≈ **358 mil de saída**.
+- A sessão principal custou ≈ US$ 13,21; os dois subagentes de revisão, ≈ US$ 1,01.
+- **Tarifas usadas** (por milhão de tokens): entrada US$ 2,00, saída US$ 10,00, leitura de cache US$ 0,10, escrita de cache de 5 min US$ 2,50 e de 1 h US$ 4,00. Essas tarifas são as que reproduzem exatamente os três checkpoints de custo que o próprio Claude Code gravou na sessão (US$ 0,58, 7,23 e 9,57). O último checkpoint registrado pelo Claude Code foi **US$ 9,60**; o total acima inclui o trabalho posterior a ele. A tabela pública de preços consultada lista a leitura de cache do Sonnet 5.5 a US$ 0,20/M; com essa tarifa o total subiria para ≈ US$ 19.
+- **Não estão incluídos:** o custo de *executar* a aplicação (chamadas à OpenAI e ao Tavily durante os testes, `evals` e demonstrações), e o tempo de desenvolvimento, que **não foi cronometrado**.
+
 ## Limitações conhecidas
 
 - Dados de clientes são sintéticos; o `user_id` não é autenticado.
-- `insufficient_evidence` depende de o modelo não citar evidência quando não encontra a informação (caso `x13` dos `evals`): o texto da resposta é honesto, mas o status pode sair `answered`.
+- A verificação de suporte e cobertura do Knowledge é uma chamada de LLM: é calibrada pelo prompt e varia entre execuções. Ela é conservadora (prefere `partial`/`insufficient_evidence` a liberar texto sem suporte); em duas rodadas seguidas dos `evals` após a revisão v2, o placar foi 10/15 e 12/15, sem nenhuma resposta errada liberada (rota, ferramentas, valores e afirmações proibidas em 100%) e com o `x13` corrigido nas duas; as falhas restantes são `partial`/`insufficient_evidence` (comparação Get Clássica × Get Smart, Pix, crediário, combinado) e uma cotação web com snippet ambíguo.
 - O texto do Suporte pode sair em português mesmo com pergunta em inglês (o bloco de recebíveis é um template em português); o Conhecimento responde no idioma da pergunta.
 - O filtro que impede o LLM de afirmar "pago/confirmado" é por padrões (pt/en) e é conservador: pode trocar frases inofensivas por uma nota fixa.
 - Os itens de "Pendências" vêm do próprio modelo e podem terminar com ponto duplicado.

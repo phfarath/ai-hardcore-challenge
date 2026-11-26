@@ -15,6 +15,7 @@ from app.deps import Deps
 from app.llm import LLMClient, LLMTurn, ToolCall, ToolSpec
 from app.rag import KnowledgeIndex, chunk_document
 from app.repositories import JsonCustomerRepository
+from app.schemas import Claim, ClaimVerdict, KnowledgeOutput, VerificationOutput
 from app.tools.search import WebResult
 
 _call_ids = itertools.count(1)
@@ -140,3 +141,54 @@ async def make_deps(
         clock=clock or FrozenClock(),
         settings=Settings(_env_file=None, **settings_overrides),  # type: ignore[call-arg]
     )
+
+
+def claim(
+    evidence_id: str,
+    quote: str,
+    *,
+    obligation: str = "pergunta",
+    statement: str | None = None,
+) -> Claim:
+    """Afirmação coberta que cita literalmente um trecho da evidência."""
+    return Claim(
+        obligation=obligation,
+        status="covered",
+        statement=statement or quote,
+        evidence_id=evidence_id,
+        quote=quote,
+    )
+
+
+def missing(obligation: str = "pergunta") -> Claim:
+    return Claim(
+        obligation=obligation, status="not_found", statement="", evidence_id=None, quote=None
+    )
+
+
+def kout(answer: str, *claims: Claim, pending: list[str] | None = None) -> KnowledgeOutput:
+    return KnowledgeOutput(answer=answer, claims=list(claims), pending=pending or [])
+
+
+def verdict(
+    *supported: bool, uncovered: list[str] | None = None, consistent: bool = True
+) -> VerificationOutput:
+    return VerificationOutput(
+        verdicts=[ClaimVerdict(claim=i, supported=s, reason="r") for i, s in enumerate(supported)],
+        answers_question=not uncovered,
+        uncovered=uncovered or [],
+        answer_consistent=consistent,
+    )
+
+
+SMART_QUOTE = "A Get Smart tem tela touch e impressora térmica integrada."
+ADQ_QUOTE = "Verifique o Wi-Fi ou o chip e reinicie a maquininha."
+
+
+def knowledge_turns(answer: str, chunk_id: str, quote: str) -> list[LLMTurn]:
+    """Knowledge que busca, responde citando um trecho sustentado e passa na verificação."""
+    return [
+        tool_call_turn("retrieve_getnet_knowledge", query="x"),
+        final_turn(kout(answer, claim(chunk_id, quote))),
+        final_turn(verdict(True)),
+    ]

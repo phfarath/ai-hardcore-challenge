@@ -19,6 +19,7 @@ from app.context import (
     IndexUnavailable,
     ProviderUnavailable,
     RequestContext,
+    VerificationUnavailable,
 )
 from app.deps import Deps
 from app.llm import ToolSpec
@@ -27,6 +28,7 @@ from app.schemas import (
     AgentResult,
     ChatRequest,
     ChatResponse,
+    DiagnosticGoal,
     Evidence,
     RoutePlan,
     SourceRef,
@@ -37,12 +39,19 @@ from app.schemas import (
 from app.tools.customer import build_customer_tools
 from app.tools.knowledge import build_knowledge_tools
 
-_STEP_FAILURES = (BudgetExceeded, DeadlineExceeded, ProviderUnavailable, IndexUnavailable)
+_STEP_FAILURES = (
+    BudgetExceeded,
+    DeadlineExceeded,
+    ProviderUnavailable,
+    IndexUnavailable,
+    VerificationUnavailable,
+)
 _REASONS: dict[type[Exception], str] = {
     BudgetExceeded: "o limite de processamento da requisição foi atingido",
     DeadlineExceeded: "o tempo limite da requisição foi atingido",
     ProviderUnavailable: "o provedor de IA está indisponível",
     IndexUnavailable: "a base de conhecimento está indisponível",
+    VerificationUnavailable: "a verificação das fontes não pôde ser concluída",
 }
 _LABELS = {"customer_support": "Suporte ao cliente", "knowledge": "Conhecimento"}
 _HANDOFF_NOTE = (
@@ -67,22 +76,33 @@ def _loggable_ids(evidence: list[Evidence]) -> list[str]:
     return [e.id for e in evidence if e.type != "customer_record"]
 
 
-def extract_public_context(result: ToolResult) -> dict[str, str]:
+def extract_public_context(result: ToolResult, goal: DiagnosticGoal = "general") -> dict[str, str]:
     """Do diagnóstico do terminal, só o que ajuda numa busca pública: nada de ids, valores ou
-    dados do cliente."""
+    dados do cliente. Conexão e recusa são observações separadas; o objetivo da pergunta escolhe
+    qual delas é o problema, sem atribuir uma causa comum só porque aparecem juntas."""
     terminal = result.data.get("terminal")
     if result.status != "ok" or not terminal:
         return {}
     last_tx = terminal.get("last_transaction") or {}
-    if terminal["connection_state"] == "offline" or terminal.get("last_error_code"):
-        issue, code = "connectivity", terminal.get("last_error_code")
-    elif last_tx.get("status") == "declined":
-        issue, code = "transaction_declined", last_tx.get("decline_code")
+    offline = terminal["connection_state"] == "offline"
+    connectivity = offline or bool(terminal.get("last_error_code"))
+    declined = last_tx.get("status") == "declined"
+    observed: dict[str, tuple[str, str | None]] = {}
+    if connectivity:
+        observed["connectivity"] = ("connectivity", terminal.get("last_error_code"))
+    if declined:
+        observed["transaction_decline"] = ("transaction_declined", last_tx.get("decline_code"))
+    if goal == "general":
+        primary = next(iter(observed), None)  # conexão primeiro: sem ela nada transaciona
     else:
-        issue, code = "none", None
+        primary = goal if goal in observed else None
+    issue, code = observed[primary] if primary else ("none", None)
     context = {"terminal_model": terminal["model"], "issue": issue}
     if code:
         context["error_code"] = code
+    other = "transaction_decline" if primary == "connectivity" else None
+    if goal == "general" and other in observed and observed[other][1]:
+        context["decline_code"] = observed[other][1] or ""
     return context
 
 
@@ -105,6 +125,7 @@ class _Run:
         self.failures: list[tuple[str, Exception]] = []
         self.customer_tools: list[ToolSpec] = build_customer_tools(deps.repo)
         self.knowledge_tools: list[ToolSpec] = build_knowledge_tools(deps.index, deps.search)
+        self.diagnostic_goal: DiagnosticGoal = "general"
 
     @property
     def stop(self) -> bool:
@@ -142,20 +163,28 @@ class _Run:
         )
 
     async def support(self, task: Task) -> None:
+        self.diagnostic_goal = task.diagnostic_goal
         await self.step(
             "suporte",
             lambda: run_support(self.deps.llm, self.ctx, self.customer_tools, task),
         )
 
-    async def knowledge(self, task: Task, technical: dict[str, str] | None = None) -> None:
+    async def knowledge(
+        self,
+        task: Task,
+        technical: dict[str, str] | None = None,
+        original_message: str | None = None,
+    ) -> None:
         await self.step(
             "conhecimento",
-            lambda: run_knowledge(self.deps.llm, self.ctx, self.knowledge_tools, task, technical),
+            lambda: run_knowledge(
+                self.deps.llm, self.ctx, self.knowledge_tools, task, technical, original_message
+            ),
         )
 
     def diagnostics_context(self) -> dict[str, str] | None:
         for result in reversed(self.ctx.tool_results):
-            technical = extract_public_context(result)
+            technical = extract_public_context(result, self.diagnostic_goal)
             if technical:
                 return technical
         return None
@@ -164,7 +193,7 @@ class _Run:
 async def _run_workflow(plan: RoutePlan, run: _Run) -> None:
     tasks = {t.agent: t for t in plan.tasks}
     if plan.workflow == "knowledge":
-        await run.knowledge(tasks["knowledge"])
+        await run.knowledge(tasks["knowledge"], original_message=run.ctx.message)
     elif plan.workflow == "support":
         await run.support(tasks["support"])
     elif plan.workflow == "support_then_knowledge":
@@ -211,6 +240,7 @@ async def handle_chat(
     ctx = RequestContext(
         request_id=request_id or f"req_{uuid.uuid4().hex[:12]}",
         user_id=req.user_id,
+        message=req.message,
         clock=deps.clock,
         budget=Budget(
             max_llm_calls=s.max_llm_calls,

@@ -23,10 +23,19 @@ Critério de sucesso do avaliador: clonar, configurar `.env`, rodar três comand
 - Falhas tratadas com status de domínio explícitos.
 - Logs estruturados e conjunto de avaliação (`evals/cases.json`).
 
+**Objetivos da revisão v2** (resposta à avaliação; entram por PRs separados)
+- Avaliador sem falsos positivos e regressões dos achados registradas antes das correções (T01).
+- Fatos financeiros renderizados só pelo servidor; diagnóstico guiado pela intenção (T03).
+- Identidade autenticada (token) e autorização por recurso antes de qualquer chamada ao LLM (T02).
+- Conversa e execução persistidas (SQLite), esclarecimento em dois turnos, idempotência (T04).
+- Caso interno de atendimento humano com fila, decisão de operador e retomada (T05).
+- Verificação de suporte e cobertura da pergunta antes de `answered` (T06); replanejamento limitado (T07).
+
 **Não-objetivos** (ficam fora do núcleo)
-- Quarto agente, guardrails amplos de conteúdo, handoff real (integração com Teams/humano).
-- Memória de conversa entre requisições.
-- Autenticação real, API real de clientes Getnet, dashboards/alertas implementados (só descritos no README).
+- Quarto agente conversacional, guardrails amplos de conteúdo.
+- Integração com plataforma externa de atendimento (o caso humano é interno à aplicação).
+- Banco servidor (Postgres), outbox e workers distribuídos: uma instância com SQLite basta ao escopo.
+- API real de clientes Getnet, dashboards/alertas implementados (só descritos no README).
 - Execução paralela dos especialistas (sequencial no MVP).
 
 **Anti-objetivos** (falha mesmo que "funcione")
@@ -82,25 +91,29 @@ Saída estruturada validada pelo executor: fluxo na lista permitida, ≤2 tarefa
 Ferramentas: `retrieve_getnet_knowledge(query, market, topic)` e `web_search(query)`.
 - Pergunta sobre Getnet → RAG. Pergunta geral/atual (clima, cotação) → web.
 - Pergunta Getnet sem evidência suficiente → `insufficient_evidence` com a lacuna dita, sem inventar.
-- O LLM devolve IDs de evidência; o servidor valida que pertencem à requisição; URLs e títulos finais vêm dos metadados, nunca do LLM.
+- Saída estruturada com `claims`: para cada parte da pergunta, a afirmação, o id da evidência e uma cópia literal (`quote`) do trecho que a sustenta.
+- Verificação antes da entrega (`app/verification.py`), em duas camadas: (1) proveniência determinística: o `quote` precisa existir literalmente (ignorando tipografia e espaços) numa evidência pública coletada nesta requisição; se o id citado estiver errado, a afirmação é religada à evidência que contém o trecho; (2) uma chamada semântica separada, sem ferramentas, que recebe a pergunta (a mensagem original no fluxo `knowledge` puro), as afirmações, os trechos e o título/URL da fonte, e julga suporte por afirmação, se o núcleo da pergunta foi respondido (`answers_question`) e se o texto final vai além do aprovado.
+- Status calculado pelo servidor: nenhuma afirmação sustentada → `insufficient_evidence` (texto descartado); núcleo não respondido → `partial` com resposta montada só pelas afirmações aprovadas e a lacuna dita; tudo coberto → `answered` (texto do modelo só se o verificador o considerar consistente; senão, as afirmações aprovadas). Ausência no índice não é tratada como inexistência.
+- Verificador indisponível (falha do provedor, saída fora do schema, orçamento) → `VerificationUnavailable`: o rascunho nunca é liberado; sozinho, vira 503 `verification_unavailable`; num fluxo composto, `partial` com a pendência.
+- URLs e títulos finais vêm dos metadados, nunca do LLM.
 - Conteúdo recuperado é dado, não instrução (prompt injection indireto).
 - Responde no idioma da mensagem. Câmbio: informar moeda de comparação e tipo de cotação. Clima: preservar local e data.
 - Busca web recebe só consulta pública (sem dados do cliente).
 
 ### 4.4 Customer Support
-- `get_receivables(sales_date, *, customer_context)`: retorna vendas com valor, moeda, data prevista de liquidação, status (previsto/pago/bloqueado), data da consulta, id do registro, `data_mode`. Liquidações distintas permanecem separadas. Valor, data e status vêm da ferramenta e entram na resposta por template; o LLM só explica.
-- `get_terminal_diagnostics(terminal_id=None, *, customer_context)`: modelo, estado de conexão, último código de erro, horário da observação, situação da última transação, id da evidência. Vários terminais sem identificação → pedido de esclarecimento. Conectividade e transação recusada são tratadas separadamente; sem código específico, não se inventa causa.
+- `get_receivables(sales_date, *, customer_context)`: retorna vendas com valor, moeda, data prevista de liquidação, status (previsto/pago/bloqueado), data da consulta, id do registro, `data_mode`. Liquidações distintas permanecem separadas. Quando há recebíveis, a resposta inteira é renderizada pelo servidor: lista com valor, data e status mais uma nota fixa por status presente ("previsto" = prevista, ainda não paga; "pago" = liquidado; "bloqueado" = motivo não consta). O texto livre do LLM é descartado nesse caso, para que nenhuma frase contradiga valores, datas ou status.
+- `get_terminal_diagnostics(terminal_id=None, *, customer_context)`: modelo, estado de conexão, último código de erro, horário da observação, situação da última transação, id da evidência. Vários terminais sem identificação → pedido de esclarecimento. Conectividade e transação recusada são tratadas separadamente; sem código específico, não se inventa causa. Sem recebíveis, o texto do LLM é mantido, mas toda frase com valor monetário que nenhuma ferramenta devolveu é removida.
 - `customer_context` é injetado pela aplicação, fora dos argumentos editáveis pelo LLM. O repositório filtra por esse contexto; `terminal_id` precisa pertencer ao cliente.
 - Pergunta de prazo de recebimento genérico → Knowledge; "quando recebo *minhas* vendas" → Support.
 
 ### 4.5 Fluxo `support_then_knowledge`
-Support chama diagnóstico; o executor extrai um contexto reduzido (`terminal_model`, `error_code`, `issue`) e o repassa ao Knowledge. Dados bancários e identificadores privados não são repassados.
+O Router marca na tarefa support o `diagnostic_goal` (`connectivity`, `transaction_decline` ou `general`). Support chama diagnóstico; o executor extrai um contexto reduzido (`terminal_model`, `error_code`, `issue`) segundo esse objetivo e o repassa ao Knowledge. Conexão e recusa são observações separadas: uma pergunta sobre recusa leva o código da transação (ex.: 51), não o erro de conexão (ex.: ADQ 1-19), e um objetivo sem observação correspondente vira `issue="none"` em vez de emprestar o outro problema. Com `general`, a conectividade é o problema principal e o código de recusa segue como `decline_code`. Dados bancários e identificadores privados não são repassados.
 
 ### 4.6 Fluxo `combined`
 Duas subperguntas independentes, executadas em sequência; composição em duas seções. Se um ramo falha, retorna a parte válida com `status="partial"` e informa a pendência.
 
 ### 4.7 Limites por requisição (configuráveis)
-Especialistas ≤2; chamadas LLM ≤6 (incluindo retry); ferramentas ≤4; buscas web ≤1; retry transitório 1; deadline total 30–45 s. Valores iniciais de engenharia, não medidos.
+Especialistas ≤2; chamadas LLM ≤8 (incluindo retry e verificação); ferramentas ≤4; buscas web ≤1; retry transitório 1; deadline total 30–45 s. O Knowledge reserva 1 chamada para a verificação antes do loop de ferramentas, que não pode consumi-la. Valores iniciais de engenharia, não medidos.
 
 ## 5. RAG
 
@@ -157,7 +170,8 @@ Payload inválido → 422 sem chamar o modelo. Indisponibilidade total do proved
 
 - **Integração (pytest)**: API até a resposta, com LLM programado e Tavily/embeddings falsos; relógio congelado. Cobre: RAG, web, recebíveis, diagnóstico, fluxo composto, isolamento entre clientes, cliente desconhecido, tentativa de trocar usuário, recuperação vazia, timeout/falha de ramo.
 - **Verificação real separada**: ingestão, embeddings, uma recuperação, uma busca Tavily e execução via Docker.
-- **Avaliação de IA**: `evals/cases.json` com as 10 perguntas + casos de ambiguidade, composição e ausência de evidência; por caso: rota, ferramenta, evidência, condições a preservar, afirmações proibidas. Métricas: acerto de rota, de ferramenta, recuperação do documento esperado, fidelidade aos dados. Revisão manual primeiro; LLM-as-judge descrito como evolução.
+- **Avaliação de IA**: `evals/cases.json` com as 10 perguntas + casos de ambiguidade, composição e ausência de evidência. Por caso: rota; ferramentas obrigatórias, permitidas (qualquer outra reprova) e ordem quando material; fontes aceitáveis; status; termos a preservar; valores ligados ao seu status na mesma linha (`must_preserve_records`); valores monetários permitidos (`allowed_amounts`, qualquer outro "R$ x" reprova); âncoras semânticas (`must_mention_any`); afirmações proibidas (palavra inteira). Listas vazias = não aplicável, fora do denominador; falha de requisição conta como falha em todas as verificações aplicáveis. Cada execução grava um relatório JSON por caso com o commit em `evals/reports/`. O próprio avaliador é testado com respostas erradas (`tests/test_eval_cases.py`). Revisão manual primeiro; LLM-as-judge descrito como evolução.
+- **Regressões dos achados** (`tests/test_regressions.py`): prosa financeira contraditória, recusa com contexto de conectividade (e08) e evidência genérica tratada como suficiente (x13); registradas como `xfail(strict=True)` antes das correções e liberadas por T03/T06.
 
 ## 11. Observabilidade
 
