@@ -20,7 +20,7 @@ Em volta dos agentes: **identidade por JWT** com autorização por recurso, **co
 
 Estimativa nossa, conservadora, para quem avalia conferir contra a evidência. A nota v1 é a do feedback.
 
-| Critério | Peso | Nota v1 (de vocês) | Nota v2 (nossa estimativa) | Evidência |
+| Critério | Peso | Nota v1 (de vocês) | Nota v2 (minha estimativa) | Evidência |
 |---|---|---|---|---|
 | Business Fit | 8% | 9,5 | **9,5** | fluxos do enunciado inalterados; `evals/cases.json` (17 casos) |
 | Agentic | 15% | 7,2 | **8,0** | replanejamento limitado a 1 mudança por pedido: [`app/replanning.py`](app/replanning.py), [`tests/test_replanning.py`](tests/test_replanning.py), ADR 0004. Não é um planejador aberto |
