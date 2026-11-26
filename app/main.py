@@ -302,8 +302,9 @@ def create_app(deps: Deps | None = None) -> FastAPI:
     async def get_handoff(
         handoff_id: str, principal: Annotated[Principal, Depends(current_principal)]
     ) -> dict[str, object]:
-        handoff = customer_handoff(app.state.deps.state, principal, handoff_id, HANDOFFS_READ)
-        return customer_view(handoff)
+        deps = app.state.deps
+        handoff = customer_handoff(deps.state, principal, handoff_id, HANDOFFS_READ)
+        return customer_view(handoff, deps.clock.now().timestamp())
 
     @app.get("/operator/handoffs")
     async def operator_queue(
@@ -311,15 +312,19 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         state: HandoffState | None = "pending",
     ) -> list[dict[str, object]]:
         authorize_operator(principal, principal.tenant_id, HANDOFFS_READ)
-        handoffs = app.state.deps.state.list_handoffs(principal.tenant_id, state)
-        return [operator_view(h) for h in handoffs]
+        deps = app.state.deps
+        now = deps.clock.now().timestamp()
+        handoffs = deps.state.list_handoffs(principal.tenant_id, state)
+        views = [operator_view(h, now) for h in handoffs]
+        return [v for v in views if state is None or v["state"] == state]
 
     @app.get("/operator/handoffs/{handoff_id}")
     async def operator_detail(
         handoff_id: str, principal: Annotated[Principal, Depends(current_principal)]
     ) -> dict[str, object]:
         deps = app.state.deps
-        return operator_view(operator_handoff(deps.state, principal, handoff_id, HANDOFFS_READ))
+        handoff = operator_handoff(deps.state, principal, handoff_id, HANDOFFS_READ)
+        return operator_view(handoff, deps.clock.now().timestamp())
 
     @app.post("/operator/handoffs/{handoff_id}/claim")
     async def operator_claim(
@@ -331,7 +336,7 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         operator_handoff(deps.state, principal, handoff_id, HANDOFFS_RESOLVE)
         now = deps.clock.now().timestamp()
         claimed = deps.state.claim_handoff(handoff_id, principal.sub, req.expected_version, now)
-        return operator_view(claimed)
+        return operator_view(claimed, now)
 
     @app.post("/operator/handoffs/{handoff_id}/resolve")
     async def operator_resolve(
@@ -346,7 +351,7 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         resolved = deps.state.resolve_handoff(
             handoff_id, principal.sub, req.expected_version, decision, now
         )
-        return operator_view(resolved)
+        return operator_view(resolved, now)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

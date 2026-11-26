@@ -199,6 +199,23 @@ async def test_expired_case_cannot_be_decided(tmp_path: Path) -> None:
     assert response.json() == {"error": "handoff_expired"}
 
 
+async def test_expired_case_leaves_queue_and_shows_expired(tmp_path: Path) -> None:
+    clock = FrozenClock()
+    deps, body = await _open_case(tmp_path, clock)
+    handoff_id = body["handoff_id"]
+    queue = await _call(deps, "GET", "/operator/handoffs", "operator-1")
+    assert [h["id"] for h in queue.json()] == [handoff_id]
+
+    clock.advance(hours=deps.settings.handoff_ttl_hours + 1)
+
+    queue = await _call(deps, "GET", "/operator/handoffs", "operator-1")
+    assert queue.json() == []
+    detail = await _call(deps, "GET", f"/operator/handoffs/{handoff_id}", "operator-1")
+    assert detail.json()["state"] == "expired"
+    customer = await _call(deps, "GET", f"/handoffs/{handoff_id}", "user-a")
+    assert customer.json()["state"] == "expired"
+
+
 @pytest.mark.parametrize(
     ("sub", "scopes", "expected"),
     [

@@ -70,10 +70,18 @@ def customer_handoff(
     return handoff
 
 
-def operator_view(handoff: Handoff) -> dict[str, Any]:
+def effective_state(handoff: Handoff, now: float) -> str:
+    """Caso aberto que passou do prazo aparece como `expired`: ninguém mais pode decidi-lo, então
+    não fica na fila nem parece em andamento para o cliente. Derivado na leitura, sem migração."""
+    if handoff.state in ("pending", "assigned") and handoff.expires_at <= now:
+        return "expired"
+    return handoff.state
+
+
+def operator_view(handoff: Handoff, now: float) -> dict[str, Any]:
     return {
         "id": handoff.id,
-        "state": handoff.state,
+        "state": effective_state(handoff, now),
         "version": handoff.version,
         "reason": handoff.reason,
         "customer_id": handoff.customer_id,
@@ -85,10 +93,10 @@ def operator_view(handoff: Handoff) -> dict[str, Any]:
     }
 
 
-def customer_view(handoff: Handoff) -> dict[str, Any]:
+def customer_view(handoff: Handoff, now: float) -> dict[str, Any]:
     return {
         "id": handoff.id,
-        "state": handoff.state,
+        "state": effective_state(handoff, now),
         "decision_type": (handoff.decision or {}).get("decision_type"),
         "conversation_id": handoff.conversation_id,
         "expires_at": handoff.expires_at,
