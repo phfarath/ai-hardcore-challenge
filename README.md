@@ -18,7 +18,7 @@ Em volta dos agentes: **identidade por JWT** com autorização por recurso, **co
 
 ## Autoavaliação com a rubrica de vocês
 
-Estimativa nossa, conservadora, para quem avalia conferir contra a evidência. A nota v1 é a do feedback.
+Estimativa minha, conservadora, para quem avalia conferir contra a evidência. A nota v1 é a do feedback.
 
 | Critério | Peso | Nota v1 (de vocês) | Nota v2 (minha estimativa) | Evidência |
 |---|---|---|---|---|
