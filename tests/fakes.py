@@ -4,18 +4,28 @@ import hashlib
 import itertools
 import json
 from datetime import UTC, datetime, timedelta, timezone
+from functools import cache
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
 
+from app.auth import Authenticator, DevIssuer, Principal, build_auth
 from app.config import Settings
 from app.context import Budget
 from app.deps import Deps
 from app.llm import LLMClient, LLMTurn, ToolCall, ToolSpec
+from app.policies import (
+    HANDOFFS_CREATE,
+    HANDOFFS_READ,
+    RECEIVABLES_READ,
+    TERMINALS_READ,
+    AuthorizedChat,
+)
 from app.rag import KnowledgeIndex, chunk_document
 from app.repositories import JsonCustomerRepository
 from app.schemas import Claim, ClaimVerdict, KnowledgeOutput, VerificationOutput
+from app.state import SqliteStateStore
 from app.tools.search import WebResult
 
 _call_ids = itertools.count(1)
@@ -27,6 +37,9 @@ class FrozenClock:
 
     def now(self) -> datetime:
         return self._dt
+
+    def advance(self, **delta: float) -> None:
+        self._dt += timedelta(**delta)
 
 
 class ScriptedLLM:
@@ -140,6 +153,40 @@ async def make_deps(
         search=search,
         clock=clock or FrozenClock(),
         settings=Settings(_env_file=None, **settings_overrides),  # type: ignore[call-arg]
+        auth=dev_auth()[0],
+        state=SqliteStateStore(tmp_path / "state.db"),
+        dev_issuer=dev_auth()[1],
+    )
+
+
+@cache
+def dev_auth() -> tuple[Authenticator, DevIssuer]:
+    """Emissor local com chave efêmera, gerado uma vez por sessão de testes."""
+    auth, issuer = build_auth(Settings(_env_file=None, app_env="development"))  # type: ignore[call-arg]
+    assert issuer is not None
+    return auth, issuer
+
+
+CUSTOMER_SCOPES = frozenset({RECEIVABLES_READ, TERMINALS_READ, HANDOFFS_CREATE, HANDOFFS_READ})
+DEV_SUB = {"cliente1988": "user-a", "cliente2000": "user-b", "desconhecido": "user-c"}
+
+
+def principal_for(customer_id: str, scopes: frozenset[str] = CUSTOMER_SCOPES) -> Principal:
+    return Principal(
+        sub=DEV_SUB.get(customer_id, "user-x"),
+        tenant_id="getnet",
+        roles=frozenset({"customer"}),
+        scopes=scopes,
+        customer_ids=frozenset({customer_id}),
+    )
+
+
+def authorized(
+    message: str, user_id: str = "cliente1988", scopes: frozenset[str] = CUSTOMER_SCOPES
+) -> AuthorizedChat:
+    """Pedido já autorizado, como `policies.authorize_chat` o entrega ao orquestrador."""
+    return AuthorizedChat(
+        message=message, customer_id=user_id, principal=principal_for(user_id, scopes)
     )
 
 

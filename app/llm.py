@@ -43,6 +43,8 @@ class ToolSpec:
     args_model: type[BaseModel]
     run: Callable[[Any, RequestContext], Awaitable[ToolResult]]
     uses_web: bool = False
+    # escopo exigido do principal; verificado antes de executar, qualquer que seja o pedido do LLM
+    required_scope: str | None = None
 
 
 class LLMClient(Protocol):
@@ -171,6 +173,8 @@ async def _execute_tool(
     spec = by_name.get(call.name)
     if spec is None:
         return ToolResult(status="error", error=f"unknown tool: {call.name}")
+    if spec.required_scope is not None and spec.required_scope not in ctx.scopes:
+        return ToolResult(status="error", error=f"forbidden: missing scope {spec.required_scope}")
     try:
         args = spec.args_model.model_validate_json(call.arguments)
     except ValidationError as exc:

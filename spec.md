@@ -41,7 +41,7 @@ Critério de sucesso do avaliador: clonar, configurar `.env`, rodar três comand
 **Anti-objetivos** (falha mesmo que "funcione")
 - Resposta que apresente recebimento *previsto* como *confirmado*.
 - Condição comercial da Getnet inventada sem evidência.
-- Qualquer caminho em que o texto da mensagem altere o `user_id` efetivo.
+- Qualquer caminho em que o texto da mensagem, um campo do payload ou um argumento do LLM altere o cliente efetivo.
 - Fallback silencioso para um cliente padrão.
 - Segredos impressos, logados ou commitados.
 
@@ -73,16 +73,44 @@ Agentes se comunicam por **objetos Pydantic passados entre funções**. Validaç
 ### 4.1 Contratos (`app/schemas.py`)
 | Contrato | Conteúdo |
 |---|---|
-| `RequestContext` | `request_id`, `user_id`, relógio (America/Sao_Paulo, injetável), deadline, orçamento |
+| `RequestContext` | `request_id`, `user_id` (cliente já autorizado), `scopes` do principal, relógio (America/Sao_Paulo, injetável), deadline, orçamento |
+| `Principal` (`app/auth.py`) | `sub`, `tenant_id`, `roles`, `scopes` (do token) e `customer_ids` (resolvidos pelo servidor) |
 | `RoutePlan` | `workflow` ∈ {knowledge, support, support_then_knowledge, combined, clarify}; até 2 `tasks` (`agent`, `question`, `source_scope`) |
 | `ToolResult` | `status`, dados tipados, `evidence` (ids), data de referência, erro |
 | `AgentResult` | resposta, `evidence_ids` usados, pendências |
 | `ChatResponse` | `request_id`, `status`, `answer`, `agents_used`, `sources`, `data_mode`; campos adicionais `workflow` e `tools_used` (transparência e avaliação) |
 
 `status` ∈ `answered | partial | needs_clarification | insufficient_evidence | handoff_recommended | customer_not_found`.
-"handoff_recommended" é apenas recomendação; nenhum atendimento é "aberto". Regra implementada: em `support_then_knowledge`, quando o diagnóstico mostra um problema (conectividade ou transação recusada) e o Knowledge não encontra orientação oficial, o status é `handoff_recommended` e a resposta traz o diagnóstico, a lacuna e a recomendação.
+`handoff_recommended` descreve a resposta; o caso humano real é aberto pelo turno durável (§4.10) e acompanhado por `run_status`/`handoff_id`. Regra implementada: em `support_then_knowledge`, quando o diagnóstico mostra um problema (conectividade ou transação recusada) e o Knowledge não encontra orientação oficial, o status é `handoff_recommended` e a resposta traz o diagnóstico, a lacuna e a recomendação.
 
-**Cliente desconhecido** *(decisão do assistente)*: a identidade só é verificada dentro das ferramentas do Support, não antes do Router. Perguntas públicas (Knowledge) de um `user_id` desconhecido são respondidas normalmente. Se uma tarefa exige dados do cliente e ele não existe, a ferramenta devolve `not_found`, a resposta sai com `status="customer_not_found"` (HTTP 200, pois a requisição foi processada), sem fallback. Em `combined`, o ramo público ainda é entregue e o resultado final é `partial`.
+**Cliente sem cadastro** *(decisão do assistente)*: o acesso é autorizado antes do Router (§4.8), mas a existência do cadastro só é verificada dentro das ferramentas do Support. Um principal autorizado para um estabelecimento sem registro (ex.: mapa de acesso desatualizado; `user-c` → `desconhecido` nos dados de demo) recebe respostas públicas normalmente. Se uma tarefa exige dados do cliente e ele não existe, a ferramenta devolve `not_found`, a resposta sai com `status="customer_not_found"` (HTTP 200, pois a requisição foi processada), sem fallback. Em `combined`, o ramo público ainda é entregue e o resultado final é `partial`.
+
+### 4.8 Identidade e autorização (T02)
+- `/chat` exige `Authorization: Bearer <JWT>`. Algoritmo fixo RS256; assinatura, `iss`, `aud`, `exp`, `iat`, `sub` obrigatórios, `nbf` quando presente (tolerância de 30 s), `tenant_id` obrigatório. A chave vem do emissor configurado (JWKS com cache), nunca de um endereço no token.
+- O token diz quem é o chamador; os estabelecimentos que ele acessa vêm de um repositório do servidor (`AccessRepository`). `user_id` no payload é só um **seletor**, confrontado com esse conjunto antes do Router; omitido, vale o único estabelecimento do principal (mais de um → 400 `customer_selection_required`).
+- Escopos: `receivables:read`, `terminals:read` (ferramentas do Support), `handoffs:create|read|resolve` (T05). O Support só recebe as ferramentas permitidas pelos escopos; sem nenhuma → 403 `insufficient_scope`. O executor de ferramentas confere o escopo de novo antes de executar (defesa em profundidade).
+- Política de existência: cliente alheio no seletor → 403 `forbidden`, igual para cliente existente ou não. Recursos com id (conversa, execução, caso; T04/T05) de outro dono → 404, mesmo sem escopo (`authorize_owned`). Operador age só no próprio tenant e não conversa como cliente (`authorize_operator`).
+- `APP_ENV=development`: emissor local com chave efêmera e `POST /dev/token` (só reduz escopos do perfil, `data/fixtures/principals.json`). `APP_ENV=production` (padrão): exige `AUTH_ISSUER` e `AUTH_JWKS_URL` https, recusa o emissor local e a rota `/dev/token` responde 404.
+- Recusas de autenticação e de acesso ao cliente acontecem antes de qualquer chamada ao LLM; a falta de escopo de dados é decidida depois que o Router escolhe o Support, antes de o Support rodar.
+
+### 4.9 Conversa durável e idempotência (T04)
+- SQLite atrás de `StateStore` (`app/state.py`): `conversations` (tenant, dono `sub`, cliente, versão, pendência, expiração), `messages` (sequência por conversa) e `runs` (estado `running|completed|failed`, hash do pedido, chave de idempotência, resposta salva, consumo, lease). Execuções e mensagens herdam o escopo pela conversa.
+- Transações curtas: o turno abre a execução `running` com lease (deadline + 5 s), libera o banco, executa e grava mensagens, pendência, versão e resultado numa transação que confere a versão da conversa. Nenhuma transação fica aberta durante chamada ao LLM.
+- Concorrência: uma execução ativa por conversa; um segundo turno simultâneo recebe 409 `conversation_busy`. Versão divergente na gravação → 409 `conversation_conflict`, nada é sobrescrito.
+- Idempotência (`Idempotency-Key`, por tenant + `sub`): mesma chave e mesmo conteúdo (hash de mensagem, cliente e conversa) devolve a resposta salva sem nova execução; outro conteúdo → 409 `idempotency_key_reused`; ainda em execução → 409 `request_in_progress`; execução falha ou abandonada (lease vencida, ex.: processo caiu) → reexecuta com a mesma chave.
+- Conversa: só o mesmo principal, tenant e cliente a continuam, e só enquanto o acesso ao cliente estiver vigente (revalidado a cada turno). Qualquer outro caso, inclusive expirada → 404. `GET /conversations/{id}` segue a mesma regra.
+- Esclarecimento de terminal: a lista apresentada é renderizada pelo servidor, numerada, e guardada com o plano e a pergunta original (validade de 15 min, configurável). A resposta ("o segundo", "2", "the first", "o último" ou o código) é resolvida sem LLM e só vale se a lista atual de terminais do cliente for igual à guardada; posição fora da lista ou lista mudada → nova pergunta com a lista atual, sem LLM. A retomada reaproveita o plano salvo (sem novo Router) e reconsulta o diagnóstico. Mensagem que não parece escolha segue como pedido novo.
+- Histórico: as últimas mensagens da conversa vão ao Router como dado (nunca instrução), só para completar referências da mensagem nova.
+- Retenção configurável (`CONVERSATION_RETENTION_HOURS`, padrão 72 h; não é prazo regulatório): conversas vencidas são apagadas com mensagens e execuções a cada turno.
+- Fora do escopo desta etapa: checkpoints por passo e worker de recuperação; um turno interrompido é refeito por inteiro pela mesma chave.
+
+### 4.10 Atendimento humano: caso, operador e retomada (T05)
+- Gatilho: em `support_then_knowledge`, diagnóstico com problema e nenhuma orientação oficial. Pelo `/chat` durável, se o principal tem `handoffs:create`, o turno abre um caso interno real (`handoffs`) na mesma transação que grava a resposta: a resposta traz o id do caso, `status=handoff_recommended` (qualidade da resposta), `run_status=awaiting_operator` (andamento) e `handoff_id`. Sem o escopo, fica só a recomendação. Repetição idempotente do turno não abre um segundo caso.
+- Snapshot para o operador: pergunta, contexto técnico público (modelo, problema, código), lacuna e ids de fontes; sem valores nem identificadores de recebíveis.
+- Operador (`role=operator`, mesmo tenant): `GET /operator/handoffs` (fila, `handoffs:read`), `GET /operator/handoffs/{id}`, `POST .../claim {expected_version}` e `POST .../resolve {decision_type: reply|no_action, content, justification, expected_version}` (`handoffs:resolve`). Assumir exige estado `pending` e a versão vista; decidir exige ser o responsável, estado `assigned`, versão atual e prazo vigente (`HANDOFF_TTL_HOURS`, padrão 24 h). Conflito → 409 `handoff_conflict`; vencido → 409 `handoff_expired`; outro tenant → 404; sem papel ou escopo → 403.
+- A decisão e o evento de retomada (`resume_events`, um por caso) são gravados na mesma transação. Um worker do próprio processo consome o evento com lease, revalida que o dono da conversa ainda acessa o cliente e grava a mensagem final na conversa, o estado `completed` do caso e o evento concluído numa transação. Worker que cai após pegar o evento: a lease vence e outro ciclo entrega, uma vez só. Acesso revogado → caso `cancelled`, nada é entregue.
+- A mensagem final identifica a resposta como do atendimento humano; não altera dados da conta nem vira fato oficial. O cliente acompanha por `GET /conversations/{id}` e `GET /handoffs/{id}` (`handoffs:read`, só o próprio caso).
+- Auditoria (`audit_events`): criação, assunção, decisão e retomada, com ator, resultado e correlação (run ou evento).
 
 ### 4.2 Router
 Saída estruturada validada pelo executor: fluxo na lista permitida, ≤2 tarefas, agentes existentes, sequência coerente com o fluxo. Plano inválido → uma nova tentativa dentro do orçamento; persistindo, `clarify`/erro tratado. Extrai subperguntas em mensagens compostas.
@@ -126,9 +154,16 @@ Especialistas ≤2; chamadas LLM ≤8 (incluindo retry e verificação); ferrame
 ## 6. API
 
 ```
-POST /chat   {"message": str, "user_id": str}
+POST /chat        Authorization: Bearer <JWT>   {"message": str, "user_id": str | null}
+POST /dev/token   {"sub": str, "scopes": [str] | null}   (só APP_ENV=development)
+POST /chat        + {"conversation_id": str | null}, header opcional Idempotency-Key
+GET  /conversations/{id}   mensagens e pendência da conversa (mesma autorização)
+GET  /handoffs/{id}        estado do caso para o cliente dono
+GET  /operator/handoffs[?state=]   fila do tenant (operador)
+POST /operator/handoffs/{id}/claim | /resolve   assumir e decidir (operador)
 ```
-Payload inválido → 422 sem chamar o modelo. Indisponibilidade total do provedor → erro HTTP distinto de `insufficient_evidence`. `user_id` identifica um cliente sintético; **não autentica** (documentado no README).
+A resposta traz `conversation_id` e `run_id`. Conflitos de estado → 409 (`conversation_busy`, `conversation_conflict`, `idempotency_key_reused`, `request_in_progress`); conversa inexistente, alheia ou expirada → 404 (§4.9).
+Payload inválido → 422 sem chamar o modelo. Token ausente/inválido → 401 `unauthorized` (com `WWW-Authenticate: Bearer`); cliente não autorizado → 403 `forbidden`; sem escopo → 403 `insufficient_scope`. Indisponibilidade total do provedor → erro HTTP distinto de `insufficient_evidence`. `user_id` seleciona o estabelecimento; **não autentica** (§4.8).
 
 ## 7. Dados demonstrativos
 
@@ -136,7 +171,9 @@ Payload inválido → 422 sem chamar o modelo. Indisponibilidade total do proved
 |---|---|
 | `cliente1988` | recebíveis previstos (ontem) + terminal com problema conhecido (conectividade) e transação recusada |
 | `cliente2000` | recebíveis diferentes + terminal funcionando |
-| desconhecido | `status="customer_not_found"` para perguntas que exigem dados do cliente; perguntas públicas funcionam normalmente |
+| `desconhecido` | autorizado para `user-c`, sem cadastro: `status="customer_not_found"` para perguntas que exigem dados do cliente; perguntas públicas funcionam normalmente |
+
+Principais de desenvolvimento (`data/fixtures/principals.json`): `user-a` → `cliente1988`, `user-b` → `cliente2000`, `user-c` → `desconhecido`, `operator-1` (papel `operator`, sem estabelecimento).
 
 ## 8. Mapeamento dos 10 cenários do enunciado
 

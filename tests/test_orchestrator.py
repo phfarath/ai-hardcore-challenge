@@ -6,7 +6,8 @@ import pytest
 
 from app.context import IndexUnavailable
 from app.orchestrator import extract_public_context, handle_chat, merge_status
-from app.schemas import AgentOutput, AgentResult, ChatRequest, RoutePlan, Task, ToolResult
+from app.policies import AuthorizedChat
+from app.schemas import AgentOutput, AgentResult, RoutePlan, Task, ToolResult
 from app.tools.search import SearchUnavailable, WebResult
 from tests.fakes import (
     ADQ_CHUNK_ID,
@@ -15,6 +16,7 @@ from tests.fakes import (
     SMART_QUOTE,
     FakeSearch,
     ScriptedLLM,
+    authorized,
     claim,
     final_turn,
     knowledge_turns,
@@ -35,8 +37,8 @@ def plan(workflow: str, *tasks: tuple[str, str], clarification: str | None = Non
     )
 
 
-def req(message: str = "pergunta", user_id: str = "cliente1988") -> ChatRequest:
-    return ChatRequest(message=message, user_id=user_id)
+def req(message: str = "pergunta", user_id: str = "cliente1988") -> AuthorizedChat:
+    return authorized(message, user_id)
 
 
 def answer(text: str, *ids: str) -> AgentOutput:

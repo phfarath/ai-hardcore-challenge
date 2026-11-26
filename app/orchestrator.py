@@ -7,7 +7,9 @@ contexto técnico mínimo (modelo, código de erro, tipo de problema) vai do Sup
 import asyncio
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass
+from typing import Any
 
 from app.agents.knowledge import run_knowledge
 from app.agents.router import route
@@ -24,9 +26,9 @@ from app.context import (
 from app.deps import Deps
 from app.llm import ToolSpec
 from app.observability import log_event
+from app.policies import AuthorizedChat, InsufficientScope
 from app.schemas import (
     AgentResult,
-    ChatRequest,
     ChatResponse,
     DiagnosticGoal,
     Evidence,
@@ -54,6 +56,10 @@ _REASONS: dict[type[Exception], str] = {
     VerificationUnavailable: "a verificação das fontes não pôde ser concluída",
 }
 _LABELS = {"customer_support": "Suporte ao cliente", "knowledge": "Conhecimento"}
+_HANDOFF_OPENED = (
+    "Como não encontrei orientação oficial para este problema, abri o caso interno {id} para a "
+    "equipe de atendimento. A resposta do atendente aparecerá nesta conversa."
+)
 _HANDOFF_NOTE = (
     "Como não encontrei orientação oficial para este problema, recomendo procurar o atendimento "
     "da Getnet. Isto é apenas uma recomendação: nenhum atendimento foi aberto."
@@ -164,9 +170,13 @@ class _Run:
 
     async def support(self, task: Task) -> None:
         self.diagnostic_goal = task.diagnostic_goal
+        # o LLM só vê as ferramentas que o principal pode usar; sem nenhuma, é 403, não resposta
+        tools = [t for t in self.customer_tools if t.required_scope in self.ctx.scopes]
+        if not tools:
+            raise InsufficientScope("no customer data scope")
         await self.step(
             "suporte",
-            lambda: run_support(self.deps.llm, self.ctx, self.customer_tools, task),
+            lambda: run_support(self.deps.llm, self.ctx, tools, task),
         )
 
     async def knowledge(
@@ -232,15 +242,47 @@ def _sources(results: list[AgentResult]) -> list[SourceRef]:
     return [SourceRef(**e.model_dump()) for e in unique.values()]
 
 
+@dataclass
+class ChatOutcome:
+    """Resposta e o que o turno durável precisa guardar: plano, opções apresentadas e consumo."""
+
+    response: ChatResponse
+    plan: RoutePlan
+    terminal_options: list[str]
+    llm_calls: int
+    tool_calls: int
+    # contexto do caso humano, só quando o fluxo pediu escalonamento (sem dados do cliente)
+    handoff: dict[str, Any] | None = None
+
+
 async def handle_chat(
-    req: ChatRequest, deps: Deps, *, request_id: str | None = None
+    req: AuthorizedChat, deps: Deps, *, request_id: str | None = None
 ) -> ChatResponse:
+    return (await run_chat(req, deps, request_id=request_id)).response
+
+
+async def run_chat(
+    req: AuthorizedChat,
+    deps: Deps,
+    *,
+    request_id: str | None = None,
+    history: Sequence[tuple[str, str]] = (),
+    plan: RoutePlan | None = None,
+    selected_terminal: str | None = None,
+    handoff_id: str | None = None,
+) -> ChatOutcome:
+    """Recebe um pedido já autorizado (`policies.authorize_chat`): a identidade efetiva vem do
+    principal do token, nunca do payload ou do texto. `plan` e `selected_terminal` retomam um
+    esclarecimento resolvido pelo servidor: o Router não roda de novo. `handoff_id` é o id
+    reservado para o caso humano, se o turno durável puder abri-lo."""
     started = time.perf_counter()
     s = deps.settings
     ctx = RequestContext(
         request_id=request_id or f"req_{uuid.uuid4().hex[:12]}",
-        user_id=req.user_id,
+        user_id=req.customer_id,
         message=req.message,
+        scopes=req.principal.scopes,
+        selected_terminal_id=selected_terminal,
         clock=deps.clock,
         budget=Budget(
             max_llm_calls=s.max_llm_calls,
@@ -249,21 +291,25 @@ async def handle_chat(
             deadline_seconds=s.deadline_seconds,
         ),
     )
-    try:
-        plan = await asyncio.wait_for(
-            route(deps.llm, ctx, req.message), timeout=max(ctx.budget.remaining_seconds(), 0.001)
-        )
-    except TimeoutError as exc:
-        if not _deadline_hit(ctx):
-            raise
-        raise DeadlineExceeded("request deadline reached") from exc
-    log_event("route", request_id=ctx.request_id, workflow=plan.workflow)
+    routed = plan is None
+    if plan is None:
+        try:
+            plan = await asyncio.wait_for(
+                route(deps.llm, ctx, req.message, history),
+                timeout=max(ctx.budget.remaining_seconds(), 0.001),
+            )
+        except TimeoutError as exc:
+            if not _deadline_hit(ctx):
+                raise
+            raise DeadlineExceeded("request deadline reached") from exc
+        log_event("route", request_id=ctx.request_id, workflow=plan.workflow)
 
-    run = _Run(ctx, deps)
     if plan.workflow == "clarify":
-        return _finish(
+        response = _finish(
             ctx, deps, plan, started, "needs_clarification", plan.clarification or "", []
         )
+        return _outcome(ctx, plan, response, routed)
+    run = _Run(ctx, deps)
     await _run_workflow(plan, run)
     if not run.results:
         log_event(
@@ -276,14 +322,48 @@ async def handle_chat(
 
     status: Status = "partial" if run.failures else merge_status(run.results)
     answer = _compose(run.results, run.failures)
+    handoff: dict[str, Any] | None = None
     if _needs_handoff(plan, run):
-        status, answer = "handoff_recommended", f"{answer}\n\n{_HANDOFF_NOTE}"
-    return _finish(ctx, deps, plan, started, status, answer, run.results)
+        note = _HANDOFF_OPENED.format(id=handoff_id) if handoff_id else _HANDOFF_NOTE
+        status, answer = "handoff_recommended", f"{answer}\n\n{note}"
+        handoff = {
+            "reason": "diagnosed_issue_without_official_guidance",
+            "question": req.message,
+            "technical_context": run.diagnostics_context() or {},
+            "gap": run.results[1].answer,
+            "source_ids": _loggable_ids([e for r in run.results for e in r.evidence]),
+        }
+    response = _finish(ctx, deps, plan, started, status, answer, run.results)
+    outcome = _outcome(ctx, plan, response, routed)
+    outcome.handoff = handoff
+    return outcome
+
+
+def _outcome(
+    ctx: RequestContext, plan: RoutePlan, response: ChatResponse, routed: bool
+) -> ChatOutcome:
+    if not routed:
+        response.agents_used = [a for a in response.agents_used if a != "router"]
+    options = next(
+        (
+            list(r.data["options"])
+            for r in reversed(ctx.tool_results)
+            if r.status == "needs_clarification" and r.data.get("options")
+        ),
+        [],
+    )
+    return ChatOutcome(
+        response=response,
+        plan=plan,
+        terminal_options=options,
+        llm_calls=ctx.budget.llm_calls,
+        tool_calls=ctx.budget.tool_calls,
+    )
 
 
 def _needs_handoff(plan: RoutePlan, run: _Run) -> bool:
     """Problema técnico diagnosticado e nenhuma orientação oficial encontrada: o sistema não
-    resolve sozinho, então recomenda atendimento humano (só recomenda; nada é aberto)."""
+    resolve sozinho e escala para atendimento humano (o turno durável abre o caso)."""
     if plan.workflow != "support_then_knowledge" or run.failures or len(run.results) != 2:
         return False
     issue = (run.diagnostics_context() or {}).get("issue", "none")

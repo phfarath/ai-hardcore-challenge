@@ -19,6 +19,7 @@ Testes padrão não usam rede nem chaves. Os que usam serviços reais têm `@pyt
 | `app/llm.py` | `LLMClient`, `OpenAIClient`, `ToolSpec`, `run_agent` (loop de tool calling) |
 | `app/tools/` | ferramentas: `customer.py`, `knowledge.py`, `search.py` (Tavily) |
 | `app/rag.py`, `app/ingest.py` | chunking, índice Chroma, ingestão (`python -m app.ingest`) |
+| `app/auth.py`, `app/policies.py` | JWT → `Principal`, emissor de desenvolvimento; autorização por cliente, escopo, dono e operador |
 | `app/repositories.py` | `CustomerRepository` + fixtures JSON (`data/fixtures/`) |
 | `app/schemas.py`, `app/context.py` | contratos Pydantic; `RequestContext`, `Budget`, exceções |
 | `tests/fakes.py` | `ScriptedLLM`, `FakeEmbedder`, `FakeSearch`, `FrozenClock`, `make_deps` |
@@ -27,7 +28,7 @@ Testes padrão não usam rede nem chaves. Os que usam serviços reais têm `@pyt
 ## Regras
 
 - **Segurança**: nunca ler, imprimir, logar ou commitar segredos (`.env`, chaves). Só `.env.example` é versionado.
-- **Identidade**: o `user_id` vive só em `RequestContext`. Ferramentas **não** recebem identidade como argumento (`args_model` com `extra="forbid"`). Não criar estado global por usuário.
+- **Identidade**: vem do token (`Principal`); o `user_id` do payload é só um seletor autorizado por `policies.authorize_chat` e vive só em `RequestContext`. Ferramentas **não** recebem identidade como argumento (`args_model` com `extra="forbid"`). Não criar estado global por usuário.
 - **Evidências**: o LLM seleciona ids; URLs e títulos vêm dos metadados do servidor. Valores financeiros saem do template (`render_receivables`), nunca da geração.
 - **Dependências externas** (LLM, embeddings, busca, clientes) são `Protocol`s com implementação real e falsa; testes usam as falsas.
 - Type hints em `app/`; Pydantic nas fronteiras; erros com tipo próprio (sem `except Exception` genérico); prompts só em `app/prompts.py`; config só via `Settings`.

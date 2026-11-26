@@ -8,7 +8,7 @@ from app.context import RequestContext
 from app.llm import LLMClient, ToolSpec, run_agent
 from app.prompts import SUPPORT_SYSTEM, today_label
 from app.schemas import AgentOutput, AgentResult, Evidence, Status, Task, ToolResult
-from app.tools.customer import render_receivables
+from app.tools.customer import render_receivables, render_terminal_options
 
 _AMOUNT = re.compile(r"\d{1,3}(?:[.,]\d{3})*[.,]\d{2}(?!\d)|\d+[.,]\d{2}(?!\d)")
 _SENTENCE = re.compile(r"(?<=[.!?])\s+|\n+")
@@ -75,6 +75,7 @@ async def run_support(
         llm, ctx, system=system, user=task.question, tools=tools, output_model=AgentOutput
     )
     blocks = [render_receivables(r) for r in results if "receivables" in r.data]
+    blocks += [render_terminal_options(r) for r in results if "options" in r.data]
     answer = "\n\n".join(p for p in [*blocks, _safe_prose(output.answer, results)] if p)
     evidence: dict[str, Evidence] = {}
     for result in results:

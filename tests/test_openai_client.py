@@ -230,6 +230,8 @@ def test_build_deps_passes_reasoning_effort_to_the_llm_client(tmp_path: Path) ->
         openai_chat_model="gpt-6-luna",
         openai_reasoning_effort="none",
         chroma_path=str(tmp_path / "idx"),
+        app_env="development",
+        state_path=str(tmp_path / "state.db"),
     )
     deps = build_deps(settings)
     assert deps.llm._reasoning_effort == "none"  # type: ignore[attr-defined]

@@ -1,6 +1,7 @@
 .env
 .venv/
 chroma_data/
+state_data/
 __pycache__/
 *.pyc
 .fastembed_cache/

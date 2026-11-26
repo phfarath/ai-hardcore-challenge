@@ -13,14 +13,20 @@ from app.tools.customer import (
     build_customer_tools,
     render_receivables,
 )
-from tests.fakes import FrozenClock
+from tests.fakes import CUSTOMER_SCOPES, FrozenClock
 
 REPO = JsonCustomerRepository("data/fixtures/customers.json")
 TOOLS = {t.name: t for t in build_customer_tools(REPO)}
 
 
 def ctx_for(user_id: str) -> RequestContext:
-    return RequestContext(request_id="r", user_id=user_id, clock=FrozenClock(), budget=Budget())
+    return RequestContext(
+        request_id="r",
+        user_id=user_id,
+        clock=FrozenClock(),
+        budget=Budget(),
+        scopes=CUSTOMER_SCOPES,
+    )
 
 
 async def call(tool: ToolSpec, args: BaseModel, user_id: str) -> ToolResult:
