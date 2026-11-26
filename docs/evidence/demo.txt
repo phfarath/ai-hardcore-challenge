@@ -1,0 +1,36 @@
+
+== 1. Identidade pelo token (T02)
+PASS sem token -> 401 -> {'error': 'unauthorized'}
+PASS seletor de outro cliente -> 403 antes do LLM -> {'error': 'forbidden'}
+PASS identidade no texto é ignorada -> Nenhuma venda registrada em 25/11/2026 (dados demonstrativos).
+
+== 2. Recebíveis e conhecimento com fontes
+PASS recebíveis renderizados pelo servidor -> Recebíveis das vendas de 24/11/2026 (dados demonstrativos): - Venda R-1988-001: R$ 1.250,00, liquidação em 25/11/2026, status: previsto - Ve
+PASS Pix com fonte oficial -> partial ['knowledge_repair:no_progress'] ['https://site.getnet.com.br/duvidas/']
+
+== 3. Conversa durável: escolha em dois turnos (T04)
+PASS pede o terminal -> Terminais encontrados: 1. T-2000-01 2. T-2000-02 Responda com o número da lista ou o código do terminal. Você tem dois terminais cadastrados: T-2000-01 e T-2000-02. Qual deles está com problema de con
+     (container reiniciado entre os turnos)
+PASS 'o segundo' resolvido pelo servidor, sem Router -> partial agents=['customer_support', 'knowledge']
+PASS conversa de outro principal -> 404
+
+== 4. Idempotência
+PASS repetição devolve o mesmo run -> 0.05s
+PASS mesma chave, outro corpo -> 409 -> {'error': 'idempotency_key_reused'}
+
+== 5. Replanejamento visível (T07)
+PASS diagnóstico com código acrescenta orientação oficial -> support ['guidance_added'] agents=['router', 'customer_support', 'knowledge']
+
+== 6. Caso humano: pedido explícito, operador e retomada (T05)
+PASS caso aberto -> hof_affd3c62837d4dc7 handoff_opened
+PASS caso na fila do operador -> 12 na fila
+PASS cliente não lê a fila -> 403
+PASS operador assume -> assigned
+PASS assumir versão antiga -> 409 -> {'error': 'handoff_conflict'}
+PASS operador decide -> resolved
+PASS decisão duplicada -> 409
+PASS retomada entregue -> {'id': 'hof_affd3c62837d4dc7', 'state': 'completed', 'decision_type': 'reply', 'conversation_id': 'conv_7a6e691527a14ed2b9b2a7a62341d937', 'expires_at': 1795713528.15194}
+PASS resposta humana identificada na conversa -> Atualização do caso hof_affd3c62837d4dc7: resposta do atendimento humano. Olá! Vou acompanhar seu caso; a maquininha deve ser reiniciada antes do teste. Esta or
+PASS outro cliente não vê o caso -> 404
+
+demo: OK

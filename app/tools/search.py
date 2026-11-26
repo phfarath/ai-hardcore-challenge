@@ -30,6 +30,9 @@ class TavilySearch:
         self._api_key = api_key
         self._client = client or httpx.AsyncClient(timeout=timeout)
 
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
     async def search(self, query: str, max_results: int = 5) -> list[WebResult]:
         try:
             response = await self._client.post(

@@ -1,0 +1,59 @@
+{
+  "code_commit": "6ae47f2",
+  "note": "Relatórios e demo executados com a árvore limpa no commit 6ae47f2 (sem '-dirty'); a documentação foi escrita depois, em commits separados.",
+  "image": {
+    "name": "entrevista-getnet-api:latest",
+    "id": "sha256:4218152f10133fffd0dcaf7dd257d462d46043fdb719098a54db49c84631e720",
+    "built_from": "Dockerfile target api"
+  },
+  "runtime": {
+    "openai_chat_model": "gpt-6-luna",
+    "openai_reasoning_effort": "none",
+    "openai_embedding_model": "text-embedding-3-small",
+    "app_env": "development",
+    "max_llm_calls": 10,
+    "max_tool_calls": 5,
+    "max_web_searches": 2,
+    "max_embedding_calls": 6,
+    "deadline_seconds": 40.0,
+    "max_replans": 1,
+    "replan_min_llm_calls": 3,
+    "replan_min_seconds": 15.0,
+    "max_concurrent_chats": 8,
+    "llm_timeout_seconds": 30.0,
+    "conversation_retention_hours": 72,
+    "pending_choice_minutes": 15,
+    "handoff_ttl_hours": 24,
+    "tavily_configured": true
+  },
+  "index": {
+    "embedding_model": "text-embedding-3-small",
+    "embedding_dim": 1536,
+    "chunks": 41,
+    "updated_at": "2026-11-10T15:29:10.049592+00:00"
+  },
+  "packages": {
+    "fastapi": "0.162.2",
+    "openai": "3.46.0",
+    "chromadb": "1.5.9",
+    "pydantic": "2.14.3",
+    "pyjwt": "2.15.1",
+    "uvicorn": "0.54.0",
+    "httpx": "0.28.1"
+  },
+  "secrets": "OPENAI_API_KEY e TAVILY_API_KEY vêm do .env local (não versionado); só a presença foi registrada (tavily_configured).",
+  "evidence": {
+    "eval_reports": [
+      "evals/reports/run-20261125T170355Z.json",
+      "evals/reports/run-20261125T170713Z.json",
+      "evals/reports/run-20261125T171028Z.json"
+    ],
+    "eval_summary": "docs/evidence/eval-summary.json",
+    "smoke": "docs/evidence/smoke.txt",
+    "demo": "docs/evidence/demo.txt",
+    "drills": "docs/evidence/drills.json (executado em 6b7df82; app/main.py, app/llm.py, app/state.py, app/deps.py, app/rag.py, app/tools/, Dockerfile e docker-compose.yml não mudaram até 6ae47f2)",
+    "retrieval_metrics": "docs/evidence/retrieval-metrics.json (commit limpo 57c05d3; índice e recuperação inalterados até 6ae47f2)",
+    "semantic_review": "docs/evidence/semantic-review.md"
+  },
+  "offline_suite": "328 passed no host (ruff, format e mypy limpos); o job `image` do CI roda a mesma suíte dentro da imagem `test`"
+}

@@ -1,0 +1,735 @@
+{
+  "commit": "57c05d3",
+  "generated_at": "2026-11-25T16:40:29.512089+00:00",
+  "index_version": "2026-11-10T14:35:06.483942+00:00",
+  "production_top_k": 5,
+  "queries": 27,
+  "aggregate": {
+    "recall@1": 0.6296,
+    "recall@3": 0.8519,
+    "recall@5": 0.9074,
+    "hit@1": 0.7778,
+    "hit@3": 0.963,
+    "hit@5": 1.0,
+    "mrr": 0.8735,
+    "ndcg@5": 0.8355
+  },
+  "aggregate_by_language": {
+    "en": {
+      "recall@1": 0.3167,
+      "recall@3": 0.6667,
+      "recall@5": 0.7833,
+      "hit@1": 0.6,
+      "hit@3": 0.9,
+      "hit@5": 1.0,
+      "mrr": 0.775,
+      "ndcg@5": 0.6857
+    },
+    "pt": {
+      "recall@1": 0.8137,
+      "recall@3": 0.9608,
+      "recall@5": 0.9804,
+      "hit@1": 0.8824,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 0.9314,
+      "ndcg@5": 0.9236
+    }
+  },
+  "ablation_top_k": [
+    {
+      "top_k": 3,
+      "production": false,
+      "recall": 0.8519,
+      "hit": 0.963,
+      "distinct_pages_per_call": 2.63
+    },
+    {
+      "top_k": 5,
+      "production": true,
+      "recall": 0.9074,
+      "hit": 1.0,
+      "distinct_pages_per_call": 3.78
+    },
+    {
+      "top_k": 8,
+      "production": false,
+      "recall": 0.9444,
+      "hit": 1.0,
+      "distinct_pages_per_call": 5.63
+    },
+    {
+      "top_k": 10,
+      "production": false,
+      "recall": 0.9568,
+      "hit": 1.0,
+      "distinct_pages_per_call": 6.52
+    }
+  ],
+  "per_query": [
+    {
+      "id": "r01",
+      "query": "What's the difference between the Get Clássica and the Get Smart?",
+      "language": "en",
+      "from_eval_case": "e01",
+      "relevant_urls": [
+        "https://site.getnet.com.br/maquininha/get-classica/",
+        "https://site.getnet.com.br/get-ajuda-maquininha/solucoes-get-smart/",
+        "https://site.getnet.com.br/maquininha/aluguel/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/get-ajuda-maquininha/solucoes-get-smart/",
+        "https://site.getnet.com.br/maquininha/get-classica/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "recall@1": 0.0,
+      "recall@3": 0.6667,
+      "recall@5": 0.6667,
+      "hit@1": 0.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 0.5,
+      "ndcg@5": 0.5307
+    },
+    {
+      "id": "r02",
+      "query": "A Get Clássica é grátis? A partir de quanto de vendas?",
+      "language": "pt",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/maquininha/get-classica/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/maquininha/get-classica/",
+        "https://site.getnet.com.br/maquininha/aluguel/",
+        "https://site.getnet.com.br/get-ajuda-get-conta/o-que-e-a-get-conta/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0
+    },
+    {
+      "id": "r03",
+      "query": "How do I turn on kiosk mode on the Get Smart?",
+      "language": "en",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/get-ajuda-maquininha/solucoes-get-smart/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/get-ajuda-maquininha/solucoes-get-smart/",
+        "https://site.getnet.com.br/get-ajuda-configuracoes/como-configurar-o-wi-fi-na-sua-maquininha-getnet/",
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-habilitar-antecipacao-automatica-pelo-app/",
+        "https://site.getnet.com.br/get-ajuda-pix/como-fazer-uma-venda-com-pix-na-maquininha/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0
+    },
+    {
+      "id": "r04",
+      "query": "Do I need a bank account to receive my sales via Pix?",
+      "language": "en",
+      "from_eval_case": "e04",
+      "relevant_urls": [
+        "https://site.getnet.com.br/get-ajuda-get-conta/o-que-e-a-get-conta/",
+        "https://site.getnet.com.br/conta-digital/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/get-ajuda-pix/como-habilitar-o-recebimento-de-vendas-via-pix-no-aplicativo-getnet-brasil/",
+        "https://site.getnet.com.br/get-ajuda-pix/como-fazer-uma-venda-com-pix-na-maquininha/",
+        "https://site.getnet.com.br/pix/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "recall@1": 0.0,
+      "recall@3": 0.0,
+      "recall@5": 0.3333,
+      "hit@1": 0.0,
+      "hit@3": 0.0,
+      "hit@5": 1.0,
+      "mrr": 0.25,
+      "ndcg@5": 0.2021
+    },
+    {
+      "id": "r05",
+      "query": "Posso receber minhas vendas sem ter conta em banco?",
+      "language": "pt",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/get-ajuda-get-conta/o-que-e-a-get-conta/",
+        "https://site.getnet.com.br/conta-digital/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/get-ajuda-get-conta/o-que-e-a-get-conta/",
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-antecipar-sua-vendas-pelo-app/",
+        "https://site.getnet.com.br/get-ajuda-gestao-de-vendas/quais-possiveis-status-das-minhas-vendas/",
+        "https://site.getnet.com.br/maquininha/get-classica/",
+        "https://site.getnet.com.br/conta-digital/"
+      ],
+      "recall@1": 0.3333,
+      "recall@3": 0.3333,
+      "recall@5": 0.6667,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 0.6508
+    },
+    {
+      "id": "r06",
+      "query": "Como habilitar o recebimento via Pix no aplicativo Getnet?",
+      "language": "pt",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/get-ajuda-pix/como-habilitar-o-recebimento-de-vendas-via-pix-no-aplicativo-getnet-brasil/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/get-ajuda-pix/como-habilitar-o-recebimento-de-vendas-via-pix-no-aplicativo-getnet-brasil/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/pix/",
+        "https://site.getnet.com.br/get-ajuda-pix/como-fazer-uma-venda-com-pix-na-maquininha/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0
+    },
+    {
+      "id": "r07",
+      "query": "How do I make a Pix sale on the card machine?",
+      "language": "en",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/get-ajuda-pix/como-fazer-uma-venda-com-pix-na-maquininha/",
+        "https://site.getnet.com.br/pix-na-maquininha-getnet/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/get-ajuda-pix/como-fazer-uma-venda-com-pix-na-maquininha/",
+        "https://site.getnet.com.br/get-ajuda-pix/como-habilitar-o-recebimento-de-vendas-via-pix-no-aplicativo-getnet-brasil/",
+        "https://site.getnet.com.br/pix-na-maquininha-getnet/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/pix/"
+      ],
+      "recall@1": 0.5,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 0.9197
+    },
+    {
+      "id": "r08",
+      "query": "Em quanto tempo cai o dinheiro de uma venda no Pix?",
+      "language": "pt",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/pix/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/get-ajuda-pix/como-fazer-uma-venda-com-pix-na-maquininha/",
+        "https://site.getnet.com.br/get-ajuda-pix/como-habilitar-o-recebimento-de-vendas-via-pix-no-aplicativo-getnet-brasil/",
+        "https://site.getnet.com.br/pix/",
+        "https://site.getnet.com.br/pix-na-maquininha-getnet/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "recall@1": 0.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 0.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 0.3333,
+      "ndcg@5": 0.5
+    },
+    {
+      "id": "r09",
+      "query": "My card machine won't connect to the internet, what should I do?",
+      "language": "en",
+      "from_eval_case": "e05",
+      "relevant_urls": [
+        "https://site.getnet.com.br/get-ajuda-erros-maquininha/erro-adq-1-19/",
+        "https://site.getnet.com.br/get-ajuda-configuracoes/como-configurar-o-wi-fi-na-sua-maquininha-getnet/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/get-ajuda-configuracoes/como-configurar-o-wi-fi-na-sua-maquininha-getnet/",
+        "https://site.getnet.com.br/maquininha/get-classica/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/get-ajuda-pix/como-fazer-uma-venda-com-pix-na-maquininha/",
+        "https://site.getnet.com.br/get-ajuda-erros-maquininha/erro-adq-1-19/"
+      ],
+      "recall@1": 0.5,
+      "recall@3": 0.5,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 0.8503
+    },
+    {
+      "id": "r10",
+      "query": "Como configurar o Wi-Fi da maquininha Getnet?",
+      "language": "pt",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/get-ajuda-configuracoes/como-configurar-o-wi-fi-na-sua-maquininha-getnet/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/get-ajuda-configuracoes/como-configurar-o-wi-fi-na-sua-maquininha-getnet/",
+        "https://site.getnet.com.br/get-ajuda-maquininha/solucoes-get-smart/",
+        "https://site.getnet.com.br/maquininha/get-classica/",
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-habilitar-antecipacao-automatica-pelo-app/",
+        "https://site.getnet.com.br/conta-digital/"
+      ],
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0
+    },
+    {
+      "id": "r11",
+      "query": "O que significa o erro ADQ 1-19 na maquininha?",
+      "language": "pt",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/get-ajuda-erros-maquininha/erro-adq-1-19/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/get-ajuda-erros-maquininha/erro-adq-1-19/",
+        "https://site.getnet.com.br/get-ajuda-gestao-de-vendas/quais-possiveis-status-das-minhas-vendas/",
+        "https://site.getnet.com.br/produtos-fisicos/",
+        "https://site.getnet.com.br/conta-digital/",
+        "https://site.getnet.com.br/get-ajuda-pix/como-fazer-uma-venda-com-pix-na-maquininha/"
+      ],
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0
+    },
+    {
+      "id": "r12",
+      "query": "How does receivables advance (antecipação) work with Getnet?",
+      "language": "en",
+      "from_eval_case": "e06",
+      "relevant_urls": [
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-antecipar-sua-vendas-pelo-app/",
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-habilitar-antecipacao-automatica-pelo-app/",
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-habilitar-antecipacao-automatica-pelo-portal/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-antecipar-sua-vendas-pelo-app/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "recall@1": 0.3333,
+      "recall@3": 0.3333,
+      "recall@5": 0.3333,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 0.4693
+    },
+    {
+      "id": "r13",
+      "query": "Como ativar a antecipação automática pelo Portal Minha Conta?",
+      "language": "pt",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-habilitar-antecipacao-automatica-pelo-portal/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-habilitar-antecipacao-automatica-pelo-portal/",
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-habilitar-antecipacao-automatica-pelo-app/",
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-antecipar-sua-vendas-pelo-app/",
+        "https://site.getnet.com.br/conta-digital/",
+        "https://site.getnet.com.br/get-ajuda-maquininha/solucoes-get-smart/"
+      ],
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0
+    },
+    {
+      "id": "r14",
+      "query": "Passo a passo para antecipar vendas pelo aplicativo",
+      "language": "pt",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-antecipar-sua-vendas-pelo-app/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-antecipar-sua-vendas-pelo-app/",
+        "https://site.getnet.com.br/vender-pelo-whatsapp/",
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-habilitar-antecipacao-automatica-pelo-app/",
+        "https://site.getnet.com.br/vender-pelo-whatsapp/",
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-habilitar-antecipacao-automatica-pelo-portal/"
+      ],
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0
+    },
+    {
+      "id": "r15",
+      "query": "How many installments can I split a sale into with the crediário?",
+      "language": "en",
+      "from_eval_case": "e09",
+      "relevant_urls": [
+        "https://site.getnet.com.br/crediario/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/crediario/",
+        "https://site.getnet.com.br/crediario/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "recall@1": 0.5,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 0.9197
+    },
+    {
+      "id": "r16",
+      "query": "Em quantos dias recebo uma venda feita no Crediário?",
+      "language": "pt",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/crediario/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/crediario/",
+        "https://site.getnet.com.br/crediario/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0
+    },
+    {
+      "id": "r17",
+      "query": "Qual a diferença entre Parcelado Emissor e Parcelado Lojista?",
+      "language": "pt",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/crediario/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0
+    },
+    {
+      "id": "r18",
+      "query": "Can I sell through WhatsApp using the Payment Link?",
+      "language": "en",
+      "from_eval_case": "e10",
+      "relevant_urls": [
+        "https://site.getnet.com.br/link-de-pagamento/",
+        "https://site.getnet.com.br/link-de-pagamento-vendas/",
+        "https://site.getnet.com.br/vender-pelo-whatsapp/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/vender-pelo-whatsapp/",
+        "https://site.getnet.com.br/link-de-pagamento-vendas/",
+        "https://site.getnet.com.br/vender-pelo-whatsapp/",
+        "https://site.getnet.com.br/link-de-pagamento-vendas/",
+        "https://site.getnet.com.br/link-de-pagamento/"
+      ],
+      "recall@1": 0.3333,
+      "recall@3": 0.6667,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 0.9469
+    },
+    {
+      "id": "r19",
+      "query": "O que é link de pagamento e para quem ele é indicado?",
+      "language": "pt",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/link-de-pagamento-vendas/",
+        "https://site.getnet.com.br/link-de-pagamento/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/link-de-pagamento-vendas/",
+        "https://site.getnet.com.br/link-de-pagamento-vendas/",
+        "https://site.getnet.com.br/link-de-pagamento/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "recall@1": 0.5,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 0.9197
+    },
+    {
+      "id": "r20",
+      "query": "Quais formas de pagamento o Link de Pagamento aceita?",
+      "language": "pt",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/link-de-pagamento/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/link-de-pagamento-vendas/",
+        "https://site.getnet.com.br/link-de-pagamento/",
+        "https://site.getnet.com.br/link-de-pagamento-vendas/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "recall@1": 0.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 0.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 0.5,
+      "ndcg@5": 0.6309
+    },
+    {
+      "id": "r21",
+      "query": "O que é uma venda desfeita?",
+      "language": "pt",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/get-ajuda-gestao-de-vendas/entenda-o-que-e-venda-autorizada-aprovada-e-desfeita/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/get-ajuda-gestao-de-vendas/entenda-o-que-e-venda-autorizada-aprovada-e-desfeita/",
+        "https://site.getnet.com.br/get-ajuda-gestao-de-vendas/quais-possiveis-status-das-minhas-vendas/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0
+    },
+    {
+      "id": "r22",
+      "query": "What does the 'pré-autorizada' sale status mean?",
+      "language": "en",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/get-ajuda-gestao-de-vendas/quais-possiveis-status-das-minhas-vendas/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/get-ajuda-gestao-de-vendas/entenda-o-que-e-venda-autorizada-aprovada-e-desfeita/",
+        "https://site.getnet.com.br/get-ajuda-gestao-de-vendas/quais-possiveis-status-das-minhas-vendas/",
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-habilitar-antecipacao-automatica-pelo-portal/",
+        "https://site.getnet.com.br/get-ajuda-antecipacao-de-venda/como-habilitar-antecipacao-automatica-pelo-app/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "recall@1": 0.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 0.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 0.5,
+      "ndcg@5": 0.6309
+    },
+    {
+      "id": "r23",
+      "query": "Quanto custa a Get Lite e qual a taxa no débito?",
+      "language": "pt",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/get-lite/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/get-lite/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/maquininha/aluguel/"
+      ],
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0
+    },
+    {
+      "id": "r24",
+      "query": "Como cancelar uma venda da Get Smart feita em dias anteriores?",
+      "language": "pt",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/get-ajuda-gestao-de-vendas/quais-possiveis-status-das-minhas-vendas/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0
+    },
+    {
+      "id": "r25",
+      "query": "Como escolher a melhor maquininha de cartão para o meu negócio?",
+      "language": "pt",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/maquininha-de-cartao/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/maquininha-de-cartao/",
+        "https://site.getnet.com.br/maquininha/get-classica/",
+        "https://site.getnet.com.br/maquininha/aluguel/",
+        "https://site.getnet.com.br/produtos-fisicos/",
+        "https://site.getnet.com.br/get-lite/"
+      ],
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0
+    },
+    {
+      "id": "r26",
+      "query": "O que é a Get Conta e quais os benefícios?",
+      "language": "pt",
+      "from_eval_case": null,
+      "relevant_urls": [
+        "https://site.getnet.com.br/get-ajuda-get-conta/o-que-e-a-get-conta/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/get-ajuda-get-conta/o-que-e-a-get-conta/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/conta-digital/",
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/duvidas/"
+      ],
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "hit@1": 1.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0
+    },
+    {
+      "id": "r27",
+      "query": "My card machine is showing a transaction decline error.",
+      "language": "en",
+      "from_eval_case": "e08",
+      "relevant_urls": [
+        "https://site.getnet.com.br/get-ajuda-gestao-de-vendas/quais-possiveis-status-das-minhas-vendas/",
+        "https://site.getnet.com.br/get-ajuda-gestao-de-vendas/entenda-o-que-e-venda-autorizada-aprovada-e-desfeita/"
+      ],
+      "ranked_urls": [
+        "https://site.getnet.com.br/duvidas/",
+        "https://site.getnet.com.br/get-ajuda-gestao-de-vendas/quais-possiveis-status-das-minhas-vendas/",
+        "https://site.getnet.com.br/crediario/",
+        "https://site.getnet.com.br/produtos-fisicos/",
+        "https://site.getnet.com.br/maquininha/aluguel/"
+      ],
+      "recall@1": 0.0,
+      "recall@3": 0.5,
+      "recall@5": 0.5,
+      "hit@1": 0.0,
+      "hit@3": 1.0,
+      "hit@5": 1.0,
+      "mrr": 0.5,
+      "ndcg@5": 0.3869
+    }
+  ],
+  "misses_at_production_top_k": []
+}

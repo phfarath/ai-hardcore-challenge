@@ -11,7 +11,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from app.agents.knowledge import run_knowledge
+from app.agents.knowledge import gap_note, run_knowledge
 from app.agents.router import route
 from app.agents.support import run_support
 from app.context import (
@@ -24,9 +24,20 @@ from app.context import (
     VerificationUnavailable,
 )
 from app.deps import Deps
+from app.language import Language, detect_language
 from app.llm import ToolSpec
 from app.observability import log_event
 from app.policies import AuthorizedChat, InsufficientScope
+from app.replanning import (
+    GUIDANCE_ADDED,
+    KNOWLEDGE_REPAIR,
+    NO_PROGRESS,
+    ReplanPolicy,
+    guidance_task,
+    made_progress,
+    merge_repair,
+    repair_task,
+)
 from app.schemas import (
     AgentResult,
     ChatResponse,
@@ -55,7 +66,11 @@ _REASONS: dict[type[Exception], str] = {
     IndexUnavailable: "a base de conhecimento está indisponível",
     VerificationUnavailable: "a verificação das fontes não pôde ser concluída",
 }
-_LABELS = {"customer_support": "Suporte ao cliente", "knowledge": "Conhecimento"}
+_LABELS: dict[Language, dict[str, str]] = {
+    "pt": {"customer_support": "Suporte ao cliente", "knowledge": "Conhecimento"},
+    "en": {"customer_support": "Customer support", "knowledge": "Knowledge"},
+}
+_PENDING: dict[Language, str] = {"pt": "Pendências: {items}.", "en": "Pending: {items}."}
 _HANDOFF_OPENED = (
     "Como não encontrei orientação oficial para este problema, abri o caso interno {id} para a "
     "equipe de atendimento. A resposta do atendente aparecerá nesta conversa."
@@ -64,12 +79,25 @@ _HANDOFF_NOTE = (
     "Como não encontrei orientação oficial para este problema, recomendo procurar o atendimento "
     "da Getnet. Isto é apenas uma recomendação: nenhum atendimento foi aberto."
 )
+_HUMAN_REQUESTED_OPENED = (
+    "Encaminhei o seu pedido para a equipe de atendimento no caso interno {id}. A resposta do "
+    "atendente aparecerá nesta conversa."
+)
+_HUMAN_REQUESTED_NOTE = (
+    "Para falar com uma pessoa, procure a central de atendimento da Getnet. Isto é apenas uma "
+    "orientação: nenhum atendimento foi aberto."
+)
 _STATUS_PRIORITY: list[Status] = [
     "customer_not_found",
     "needs_clarification",
     "insufficient_evidence",
     "handoff_recommended",
 ]
+
+
+def _handoff_status(handoff_id: str | None) -> Status:
+    """Com id o caso é aberto na mesma transação do turno; sem ele é só recomendação."""
+    return "handoff_opened" if handoff_id else "handoff_recommended"
 
 
 def _deadline_hit(ctx: RequestContext) -> bool:
@@ -124,28 +152,42 @@ def merge_status(results: list[AgentResult]) -> Status:
 class _Run:
     """Estado mutável de uma requisição: o que já foi obtido sobrevive a falhas posteriores."""
 
-    def __init__(self, ctx: RequestContext, deps: Deps) -> None:
+    def __init__(
+        self, ctx: RequestContext, deps: Deps, replans_used: int = 0, follow_up: bool = False
+    ) -> None:
         self.ctx = ctx
+        self.follow_up = follow_up  # há histórico: a mensagem nova pode depender dele
         self.deps = deps
+        s = deps.settings
+        self.policy = ReplanPolicy(s.max_replans, s.replan_min_llm_calls, s.replan_min_seconds)
+        # vem do turno anterior quando um plano salvo é retomado: retomar não zera o contador
+        self.replans_used = replans_used
+        self.plan_changes: list[str] = []
+        self.guidance_added = False
         self.results: list[AgentResult] = []
         self.failures: list[tuple[str, Exception]] = []
         self.customer_tools: list[ToolSpec] = build_customer_tools(deps.repo)
         self.knowledge_tools: list[ToolSpec] = build_knowledge_tools(deps.index, deps.search)
         self.diagnostic_goal: DiagnosticGoal = "general"
+        self.lang: Language = detect_language(ctx.message)
 
     @property
     def stop(self) -> bool:
         return any(isinstance(e, BudgetExceeded | DeadlineExceeded) for _, e in self.failures)
 
-    async def step(self, label: str, work: Callable[[], Awaitable[AgentResult]]) -> None:
-        started = time.perf_counter()
+    async def _call(self, work: Callable[[], Awaitable[AgentResult]]) -> AgentResult:
         timeout = max(self.ctx.budget.remaining_seconds(), 0.001)
         try:
-            result = await asyncio.wait_for(work(), timeout=timeout)
-        except TimeoutError:
+            return await asyncio.wait_for(work(), timeout=timeout)
+        except TimeoutError as exc:
             if not _deadline_hit(self.ctx):
                 raise
-            self._fail(label, DeadlineExceeded("request deadline reached"))
+            raise DeadlineExceeded("request deadline reached") from exc
+
+    async def step(self, label: str, work: Callable[[], Awaitable[AgentResult]]) -> None:
+        started = time.perf_counter()
+        try:
+            result = await self._call(work)
         except _STEP_FAILURES as exc:
             self._fail(label, exc)
         else:
@@ -185,11 +227,66 @@ class _Run:
         technical: dict[str, str] | None = None,
         original_message: str | None = None,
     ) -> None:
+        count = len(self.results)
         await self.step(
             "conhecimento",
             lambda: run_knowledge(
                 self.deps.llm, self.ctx, self.knowledge_tools, task, technical, original_message
             ),
+        )
+        if len(self.results) > count:
+            await self._repair(task, technical)
+
+    async def _repair(self, task: Task, technical: dict[str, str] | None) -> None:
+        """Observação: o verificador apontou lacunas. Uma nova tentativa mira só nelas; o que
+        já foi comprovado fica, e uma tentativa sem evidência nova não muda a resposta."""
+        first = self.results[-1]
+        if first.status not in ("partial", "insufficient_evidence") or not first.gaps:
+            return
+        if self.stop or not self.policy.affordable(self.ctx, self.replans_used):
+            return
+        self.replans_used += 1
+        repaired, hint = repair_task(task, first.gaps, self.lang)
+        try:
+            after = await self._call(
+                lambda: run_knowledge(
+                    self.deps.llm, self.ctx, self.knowledge_tools, repaired, technical, hint=hint
+                )
+            )
+        except _STEP_FAILURES as exc:
+            # a reparação é opcional: falhar nela não apaga o que a primeira tentativa comprovou
+            self._change(KNOWLEDGE_REPAIR, type(exc).__name__, f"{KNOWLEDGE_REPAIR}:failed")
+            return
+        if made_progress(first, after):
+            self.results[-1] = merge_repair(first, after)
+            self._change(KNOWLEDGE_REPAIR, "progress")
+        else:
+            self._change(KNOWLEDGE_REPAIR, NO_PROGRESS, f"{KNOWLEDGE_REPAIR}:{NO_PROGRESS}")
+
+    async def add_guidance(self) -> None:
+        """Observação: o diagnóstico trouxe um código de erro ou recusa que o plano não ia
+        explicar. Entra uma busca de orientação, só em fontes oficiais."""
+        last = self.results[-1] if self.results else None
+        if last is None or last.agent != "customer_support" or last.status != "answered":
+            return
+        technical = self.diagnostics_context() or {}
+        task = guidance_task(technical)
+        if task is None or self.stop or not self.policy.affordable(self.ctx, self.replans_used):
+            return
+        self.replans_used += 1
+        self.guidance_added = True
+        self._change(GUIDANCE_ADDED, technical.get("issue", ""))
+        await self.knowledge(task, technical)
+
+    def _change(self, decision: str, outcome: str, label: str | None = None) -> None:
+        self.plan_changes.append(label or decision)
+        log_event(
+            "replan",
+            request_id=self.ctx.request_id,
+            decision=decision,
+            outcome=outcome,
+            replans_used=self.replans_used,
+            llm_calls=self.ctx.budget.llm_calls,
         )
 
     def diagnostics_context(self) -> dict[str, str] | None:
@@ -203,9 +300,13 @@ class _Run:
 async def _run_workflow(plan: RoutePlan, run: _Run) -> None:
     tasks = {t.agent: t for t in plan.tasks}
     if plan.workflow == "knowledge":
-        await run.knowledge(tasks["knowledge"], original_message=run.ctx.message)
+        # num follow-up ("e a taxa dela?") a mensagem crua não tem referente: o verificador julga
+        # contra a tarefa que o Router escreveu autocontida a partir do histórico
+        original = None if run.follow_up else run.ctx.message
+        await run.knowledge(tasks["knowledge"], original_message=original)
     elif plan.workflow == "support":
         await run.support(tasks["support"])
+        await run.add_guidance()
     elif plan.workflow == "support_then_knowledge":
         await run.support(tasks["support"])
         asked = bool(run.results) and run.results[-1].status == "needs_clarification"
@@ -218,20 +319,47 @@ async def _run_workflow(plan: RoutePlan, run: _Run) -> None:
             await (run.support(task) if task.agent == "support" else run.knowledge(task))
 
 
-def _compose(results: list[AgentResult], failures: list[tuple[str, Exception]]) -> str:
+def _text(result: AgentResult, lang: Language) -> str:
+    if result.status == "partial" and result.gaps:
+        return f"{result.answer}\n{gap_note(result.gaps, lang)}"
+    return result.answer
+
+
+def _compose(
+    results: list[AgentResult], failures: list[tuple[str, Exception]], lang: Language = "pt"
+) -> str:
+    labels = _LABELS[lang]
     if len(results) == 1:
-        body = results[0].answer
+        body = _text(results[0], lang)
     else:
-        body = "\n\n".join(f"**{_LABELS.get(r.agent, r.agent)}**\n{r.answer}" for r in results)
+        body = "\n\n".join(f"**{labels.get(r.agent, r.agent)}**\n{_text(r, lang)}" for r in results)
     notes = [
         f"Pendência: a parte de {label} não pôde ser concluída porque "
         f"{_REASONS.get(type(exc), 'ocorreu um erro')}."
         for label, exc in failures
     ]
-    pending = [p for r in results for p in r.pending]
+    pending = _pending_items(results)
     if pending:
-        notes.insert(0, "Pendências: " + "; ".join(pending) + ".")
+        notes.insert(0, _PENDING[lang].format(items="; ".join(pending)))
     return "\n\n".join([body, *notes])
+
+
+def _bare(text: str) -> str:
+    return text.strip().rstrip(".;: ").strip()
+
+
+def _pending_items(results: list[AgentResult]) -> list[str]:
+    """Pendências do modelo sem repetir uma lacuna que já sai na nota de lacuna e sem pontuação
+    final, que o template acrescenta uma vez (D5). A comparação é por igualdade, ignorando
+    maiúsculas e pontuação: uma pendência só parecida continua, para não sumir com algo útil."""
+    noted = {_bare(g).casefold() for r in results if r.status == "partial" for g in r.gaps}
+    items: dict[str, str] = {}
+    for result in results:
+        for item in result.pending:
+            key = _bare(item).casefold()
+            if key and key not in noted:
+                items.setdefault(key, _bare(item))
+    return list(items.values())
 
 
 def _sources(results: list[AgentResult]) -> list[SourceRef]:
@@ -251,6 +379,7 @@ class ChatOutcome:
     terminal_options: list[str]
     llm_calls: int
     tool_calls: int
+    replans_used: int = 0
     # contexto do caso humano, só quando o fluxo pediu escalonamento (sem dados do cliente)
     handoff: dict[str, Any] | None = None
 
@@ -270,11 +399,13 @@ async def run_chat(
     plan: RoutePlan | None = None,
     selected_terminal: str | None = None,
     handoff_id: str | None = None,
+    replans_used: int = 0,
 ) -> ChatOutcome:
     """Recebe um pedido já autorizado (`policies.authorize_chat`): a identidade efetiva vem do
     principal do token, nunca do payload ou do texto. `plan` e `selected_terminal` retomam um
     esclarecimento resolvido pelo servidor: o Router não roda de novo. `handoff_id` é o id
-    reservado para o caso humano, se o turno durável puder abri-lo."""
+    reservado para o caso humano, se o turno durável puder abri-lo. `replans_used` é o que o
+    turno que salvou o plano já gastou em replanejamento."""
     started = time.perf_counter()
     s = deps.settings
     ctx = RequestContext(
@@ -289,6 +420,7 @@ async def run_chat(
             max_tool_calls=s.max_tool_calls,
             max_web_searches=s.max_web_searches,
             deadline_seconds=s.deadline_seconds,
+            max_embedding_calls=s.max_embedding_calls,
         ),
     )
     routed = plan is None
@@ -309,7 +441,21 @@ async def run_chat(
             ctx, deps, plan, started, "needs_clarification", plan.clarification or "", []
         )
         return _outcome(ctx, plan, response, routed)
-    run = _Run(ctx, deps)
+    if plan.workflow == "handoff":
+        note = (
+            _HUMAN_REQUESTED_OPENED.format(id=handoff_id) if handoff_id else _HUMAN_REQUESTED_NOTE
+        )
+        response = _finish(ctx, deps, plan, started, _handoff_status(handoff_id), note, [])
+        outcome = _outcome(ctx, plan, response, routed)
+        outcome.handoff = {
+            "reason": "customer_requested_human",
+            "question": req.message,
+            "technical_context": {},
+            "gap": "",
+            "source_ids": [],
+        }
+        return outcome
+    run = _Run(ctx, deps, replans_used, follow_up=bool(history))
     await _run_workflow(plan, run)
     if not run.results:
         log_event(
@@ -321,11 +467,11 @@ async def run_chat(
         raise run.failures[0][1]
 
     status: Status = "partial" if run.failures else merge_status(run.results)
-    answer = _compose(run.results, run.failures)
+    answer = _compose(run.results, run.failures, run.lang)
     handoff: dict[str, Any] | None = None
     if _needs_handoff(plan, run):
         note = _HANDOFF_OPENED.format(id=handoff_id) if handoff_id else _HANDOFF_NOTE
-        status, answer = "handoff_recommended", f"{answer}\n\n{note}"
+        status, answer = _handoff_status(handoff_id), f"{answer}\n\n{note}"
         handoff = {
             "reason": "diagnosed_issue_without_official_guidance",
             "question": req.message,
@@ -334,8 +480,10 @@ async def run_chat(
             "source_ids": _loggable_ids([e for r in run.results for e in r.evidence]),
         }
     response = _finish(ctx, deps, plan, started, status, answer, run.results)
+    response.plan_changes = run.plan_changes
     outcome = _outcome(ctx, plan, response, routed)
     outcome.handoff = handoff
+    outcome.replans_used = run.replans_used
     return outcome
 
 
@@ -364,7 +512,8 @@ def _outcome(
 def _needs_handoff(plan: RoutePlan, run: _Run) -> bool:
     """Problema técnico diagnosticado e nenhuma orientação oficial encontrada: o sistema não
     resolve sozinho e escala para atendimento humano (o turno durável abre o caso)."""
-    if plan.workflow != "support_then_knowledge" or run.failures or len(run.results) != 2:
+    escalates = plan.workflow == "support_then_knowledge" or run.guidance_added
+    if not escalates or run.failures or len(run.results) != 2:
         return False
     issue = (run.diagnostics_context() or {}).get("issue", "none")
     return run.results[1].status == "insufficient_evidence" and issue != "none"
@@ -400,6 +549,8 @@ def _finish(
         index_version=deps.index.version,
         llm_calls=ctx.budget.llm_calls,
         tool_calls=ctx.budget.tool_calls,
+        web_searches=ctx.budget.web_searches,
+        embedding_calls=ctx.budget.embedding_calls,
         token_usage={
             "prompt": ctx.budget.prompt_tokens,
             "completion": ctx.budget.completion_tokens,

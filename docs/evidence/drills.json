@@ -1,0 +1,95 @@
+{
+  "commit": "6b7df82",
+  "image": "entrevista-getnet-api",
+  "saturation": {
+    "config": {
+      "max_concurrent_chats": 2,
+      "concurrent_requests": 6
+    },
+    "served": 2,
+    "rejected_overloaded": 4,
+    "rejected_max_seconds": 0.07,
+    "served_p50_seconds": 10.719999999999999,
+    "served_max_seconds": 11.04,
+    "results": [
+      {
+        "status_code": 503,
+        "result": "overloaded",
+        "seconds": 0.06,
+        "retry_after": "2"
+      },
+      {
+        "status_code": 200,
+        "result": "answered",
+        "seconds": 11.04,
+        "retry_after": null
+      },
+      {
+        "status_code": 200,
+        "result": "answered",
+        "seconds": 10.4,
+        "retry_after": null
+      },
+      {
+        "status_code": 503,
+        "result": "overloaded",
+        "seconds": 0.06,
+        "retry_after": "2"
+      },
+      {
+        "status_code": 503,
+        "result": "overloaded",
+        "seconds": 0.07,
+        "retry_after": "2"
+      },
+      {
+        "status_code": 503,
+        "result": "overloaded",
+        "seconds": 0.07,
+        "retry_after": "2"
+      }
+    ]
+  },
+  "provider_down": {
+    "response": {
+      "status_code": 503,
+      "result": "llm_unavailable",
+      "seconds": 0.53,
+      "retry_after": null
+    },
+    "log": {
+      "event": "request_failed",
+      "error_code": "ProviderUnavailable",
+      "detail": "AuthenticationError (HTTP 401, code=invalid_api_key)"
+    }
+  },
+  "index_missing": {
+    "ready": {
+      "status_code": 503,
+      "status": "not_ready",
+      "checks": {
+        "index": "missing",
+        "state": "ok",
+        "lifecycle": "running"
+      }
+    },
+    "chat": {
+      "status_code": 503,
+      "result": "index_unavailable",
+      "seconds": 2.68,
+      "retry_after": null
+    }
+  },
+  "sigterm_in_flight": {
+    "in_flight_request": {
+      "status_code": 200,
+      "result": "answered",
+      "seconds": 9.63,
+      "retry_after": null
+    },
+    "shutdown_log": [
+      "INFO:     Shutting down",
+      "{\"event\": \"shutdown\", \"status\": \"clients_closed\"}"
+    ]
+  }
+}

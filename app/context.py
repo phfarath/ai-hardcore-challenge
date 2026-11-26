@@ -48,11 +48,14 @@ class Budget:
         max_tool_calls: int = 4,
         max_web_searches: int = 1,
         deadline_seconds: float = 40.0,
+        max_embedding_calls: int = 6,
     ) -> None:
         self._max_llm = max_llm_calls
         self._max_tool = max_tool_calls
         self._max_web = max_web_searches
         self._deadline = deadline_seconds
+        self._max_embedding = max_embedding_calls
+        self.embedding_calls = 0
         self._started = time.monotonic()
         self.llm_calls = 0
         self.reserved_llm_calls = 0
@@ -74,10 +77,19 @@ class Budget:
     def release_llm(self, calls: int) -> None:
         self.reserved_llm_calls = max(0, self.reserved_llm_calls - calls)
 
+    def remaining_llm_calls(self) -> int:
+        return self._max_llm - self.llm_calls - self.reserved_llm_calls
+
     def charge_tool(self) -> None:
         if self.tool_calls >= self._max_tool:
             raise BudgetExceeded("tool call limit reached")
         self.tool_calls += 1
+
+    def charge_embedding(self) -> None:
+        """Cada consulta ao índice gera um embedding pago no provedor: entra no orçamento."""
+        if self.embedding_calls >= self._max_embedding:
+            raise BudgetExceeded("embedding call limit reached")
+        self.embedding_calls += 1
 
     def charge_web(self) -> None:
         if self.web_searches >= self._max_web:

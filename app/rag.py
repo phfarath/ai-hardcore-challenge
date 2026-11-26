@@ -138,6 +138,9 @@ class OpenAIEmbedder:
         self.model = model
         self._client = openai.AsyncOpenAI(api_key=api_key, timeout=timeout, max_retries=1)
 
+    async def aclose(self) -> None:
+        await self._client.close()
+
     async def embed(self, texts: list[str]) -> list[list[float]]:
         try:
             response = await self._client.embeddings.create(model=self.model, input=texts)
@@ -165,6 +168,11 @@ class KnowledgeIndex:
         self._collection = client.get_or_create_collection(
             self._COLLECTION, metadata={"hnsw:space": "cosine"}
         )
+
+    async def aclose(self) -> None:
+        close = getattr(self._embedder, "aclose", None)
+        if close is not None:
+            await close()
 
     @property
     def _manifest_file(self) -> Path:

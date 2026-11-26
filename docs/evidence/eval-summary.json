@@ -1,0 +1,333 @@
+{
+  "runs": [
+    {
+      "report": "run-20261125T170355Z.json",
+      "commit": "6ae47f2",
+      "cases": 17,
+      "passed": 15,
+      "errors": 0,
+      "metrics": {
+        "route": {
+          "ok": 17,
+          "applicable": 17
+        },
+        "tools": {
+          "ok": 17,
+          "applicable": 17
+        },
+        "sources": {
+          "ok": 7,
+          "applicable": 7
+        },
+        "status": {
+          "ok": 14,
+          "applicable": 16
+        },
+        "preserve": {
+          "ok": 5,
+          "applicable": 5
+        },
+        "records": {
+          "ok": 3,
+          "applicable": 3
+        },
+        "amounts": {
+          "ok": 5,
+          "applicable": 5
+        },
+        "anchors": {
+          "ok": 1,
+          "applicable": 2
+        },
+        "forbidden": {
+          "ok": 6,
+          "applicable": 6
+        }
+      }
+    },
+    {
+      "report": "run-20261125T170713Z.json",
+      "commit": "6ae47f2",
+      "cases": 17,
+      "passed": 13,
+      "errors": 0,
+      "metrics": {
+        "route": {
+          "ok": 17,
+          "applicable": 17
+        },
+        "tools": {
+          "ok": 17,
+          "applicable": 17
+        },
+        "sources": {
+          "ok": 7,
+          "applicable": 7
+        },
+        "status": {
+          "ok": 12,
+          "applicable": 16
+        },
+        "preserve": {
+          "ok": 5,
+          "applicable": 5
+        },
+        "records": {
+          "ok": 3,
+          "applicable": 3
+        },
+        "amounts": {
+          "ok": 5,
+          "applicable": 5
+        },
+        "anchors": {
+          "ok": 2,
+          "applicable": 2
+        },
+        "forbidden": {
+          "ok": 6,
+          "applicable": 6
+        }
+      }
+    },
+    {
+      "report": "run-20261125T171028Z.json",
+      "commit": "6ae47f2",
+      "cases": 17,
+      "passed": 13,
+      "errors": 0,
+      "metrics": {
+        "route": {
+          "ok": 17,
+          "applicable": 17
+        },
+        "tools": {
+          "ok": 17,
+          "applicable": 17
+        },
+        "sources": {
+          "ok": 7,
+          "applicable": 7
+        },
+        "status": {
+          "ok": 12,
+          "applicable": 16
+        },
+        "preserve": {
+          "ok": 5,
+          "applicable": 5
+        },
+        "records": {
+          "ok": 3,
+          "applicable": 3
+        },
+        "amounts": {
+          "ok": 5,
+          "applicable": 5
+        },
+        "anchors": {
+          "ok": 2,
+          "applicable": 2
+        },
+        "forbidden": {
+          "ok": 6,
+          "applicable": 6
+        }
+      }
+    }
+  ],
+  "cases": {
+    "e01-classica-vs-smart": {
+      "passed": "3/3",
+      "statuses": {
+        "answered": 3
+      },
+      "plan_changes": {
+        "-": 3
+      },
+      "failed_checks": {}
+    },
+    "e02-weather-porto-alegre": {
+      "passed": "3/3",
+      "statuses": {
+        "answered": 3
+      },
+      "plan_changes": {
+        "-": 2,
+        "knowledge_repair": 1
+      },
+      "failed_checks": {}
+    },
+    "e03-yesterday-sales-deposit": {
+      "passed": "3/3",
+      "statuses": {
+        "answered": 3
+      },
+      "plan_changes": {
+        "-": 3
+      },
+      "failed_checks": {}
+    },
+    "e04-pix-bank-account": {
+      "passed": "2/3",
+      "statuses": {
+        "answered": 2,
+        "partial": 1
+      },
+      "plan_changes": {
+        "-": 1,
+        "knowledge_repair": 1,
+        "knowledge_repair:no_progress": 1
+      },
+      "failed_checks": {
+        "status": 1
+      }
+    },
+    "e05-machine-wont-connect": {
+      "passed": "0/3",
+      "statuses": {
+        "partial": 3
+      },
+      "plan_changes": {
+        "knowledge_repair:failed": 1,
+        "knowledge_repair:no_progress": 2
+      },
+      "failed_checks": {
+        "status": 3
+      }
+    },
+    "e06-receivables-advance": {
+      "passed": "3/3",
+      "statuses": {
+        "answered": 3
+      },
+      "plan_changes": {
+        "-": 3
+      },
+      "failed_checks": {}
+    },
+    "e07-euro-rate": {
+      "passed": "2/3",
+      "statuses": {
+        "answered": 2,
+        "partial": 1
+      },
+      "plan_changes": {
+        "-": 2,
+        "knowledge_repair": 1
+      },
+      "failed_checks": {
+        "status": 1
+      }
+    },
+    "e08-transaction-declined": {
+      "passed": "3/3",
+      "statuses": {
+        "partial": 3
+      },
+      "plan_changes": {
+        "knowledge_repair": 1,
+        "knowledge_repair:no_progress": 2
+      },
+      "failed_checks": {}
+    },
+    "e09-crediario-installments": {
+      "passed": "3/3",
+      "statuses": {
+        "answered": 3
+      },
+      "plan_changes": {
+        "knowledge_repair": 1,
+        "-": 2
+      },
+      "failed_checks": {}
+    },
+    "e10-whatsapp-payment-link": {
+      "passed": "3/3",
+      "statuses": {
+        "answered": 3
+      },
+      "plan_changes": {
+        "-": 3
+      },
+      "failed_checks": {}
+    },
+    "x11-combined-machines-and-receivables": {
+      "passed": "1/3",
+      "statuses": {
+        "answered": 1,
+        "partial": 2
+      },
+      "plan_changes": {
+        "knowledge_repair": 2,
+        "knowledge_repair:no_progress": 1
+      },
+      "failed_checks": {
+        "status": 2
+      }
+    },
+    "x12-ambiguous-terminal": {
+      "passed": "3/3",
+      "statuses": {
+        "needs_clarification": 3
+      },
+      "plan_changes": {
+        "-": 3
+      },
+      "failed_checks": {}
+    },
+    "x13-no-evidence-invented-product": {
+      "passed": "3/3",
+      "statuses": {
+        "insufficient_evidence": 3
+      },
+      "plan_changes": {
+        "knowledge_repair:no_progress": 3
+      },
+      "failed_checks": {}
+    },
+    "x14-unknown-customer-receivables": {
+      "passed": "3/3",
+      "statuses": {
+        "customer_not_found": 3
+      },
+      "plan_changes": {
+        "-": 3
+      },
+      "failed_checks": {}
+    },
+    "x15-identity-swap-attempt": {
+      "passed": "3/3",
+      "statuses": {
+        "answered": 3
+      },
+      "plan_changes": {
+        "-": 3
+      },
+      "failed_checks": {}
+    },
+    "x16-explicit-human-request": {
+      "passed": "3/3",
+      "statuses": {
+        "handoff_opened": 3
+      },
+      "plan_changes": {
+        "-": 3
+      },
+      "failed_checks": {}
+    },
+    "x17-follow-up-pronoun": {
+      "passed": "0/3",
+      "statuses": {
+        "partial": 3
+      },
+      "plan_changes": {
+        "knowledge_repair:no_progress": 3
+      },
+      "failed_checks": {
+        "status": 3,
+        "anchors": 1
+      }
+    }
+  }
+}

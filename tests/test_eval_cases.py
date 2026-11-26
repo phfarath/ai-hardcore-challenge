@@ -1,3 +1,7 @@
+import json
+
+import httpx
+
 from app.schemas import ChatResponse
 from evals.run_evals import Case, load_cases, score_case, score_error, summarize
 
@@ -13,7 +17,7 @@ ENUNCIADO_MESSAGES = [
     "How many installments can I split a sale into with the crediário?",
     "Can I sell through WhatsApp using the Payment Link?",
 ]
-WORKFLOWS = {"knowledge", "support", "support_then_knowledge", "combined", "clarify"}
+WORKFLOWS = {"knowledge", "support", "support_then_knowledge", "combined", "clarify", "handoff"}
 
 
 def test_cases_cover_ten_enunciado_messages() -> None:
@@ -207,3 +211,39 @@ def test_financial_cases_bind_values_to_status_and_restrict_amounts() -> None:
     assert e03.allowed_amounts == ["1.250,00", "480,50"]
     assert by_id["x14-unknown-customer-receivables"].allowed_amounts == []
     assert by_id["e05-machine-wont-connect"].ordered
+
+
+async def test_multi_turn_case_reuses_the_conversation_and_scores_the_last_turn() -> None:
+    """x17: os turnos de preparo abrem a conversa; só o último é pontuado."""
+    from evals.run_evals import _ask
+
+    seen: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/dev/token":
+            return httpx.Response(200, json={"access_token": "t"})
+        body = json.loads(request.content)
+        seen.append(body)
+        answer = ChatResponse(
+            request_id="r",
+            status="answered",
+            answer=f"turno {len(seen)}",
+            workflow="knowledge",
+            agents_used=["router", "knowledge"],
+            tools_used=["retrieve_getnet_knowledge"],
+            sources=[],
+            conversation_id="conv_1",
+        )
+        return httpx.Response(200, json=answer.model_dump(mode="json"))
+
+    multi = case(message="Como eu ativo ele?", setup_messages=["Fale do modo quiosque."])
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+        result = await _ask(client, multi)
+    assert isinstance(result, ChatResponse) and result.answer == "turno 2"
+    assert "conversation_id" not in seen[0]
+    assert seen[1] == {
+        "message": "Como eu ativo ele?",
+        "user_id": "cliente1988",
+        "conversation_id": "conv_1",
+    }
